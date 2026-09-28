@@ -750,6 +750,65 @@ describe('XlsxWriter: columns sized by what they hold', () => {
     it('refuses a maximum no column can be sized by', () => {
         assert.throws(() => write({ autoWidthMax: 0 }, [['a']]), /autoWidthMax/);
     });
+
+    it('raises a measured column to the minimum, and gives none to an empty one', async () => {
+        const { sheet } = await readXlsx(
+            write({ autoWidthMax: 50, autoWidthMin: 6 }, [['ab', null, 'a longer line']]),
+        );
+        assert.ok(sheet.includes(measured(1, 6)), sheet);
+        assert.ok(!sheet.includes('min="2"'), sheet);
+        assert.ok(sheet.includes(measured(3, 'a longer line'.length)), sheet);
+    });
+
+    it('takes the minimum from the command that opened the sheet', async () => {
+        const { sheets } = await readXlsx(
+            write({ autoWidthMax: 50, autoWidthMin: 6 }, [
+                ['ab'],
+                { '#worksheet': 'Narrower', autoWidthMin: 3 },
+                ['ab'],
+            ]),
+        );
+        assert.ok(sheets[0]?.includes(measured(1, 6)), sheets[0] ?? 'no first sheet');
+        assert.ok(sheets[1]?.includes(measured(1, 3)), sheets[1] ?? 'no second sheet');
+    });
+
+    it('refuses a minimum above the maximum', () => {
+        assert.throws(() => write({ autoWidthMax: 5, autoWidthMin: 6 }, [['a']]), /autoWidthMin/);
+    });
+
+    it('measures only the rows it was asked to, header row included', async () => {
+        const { sheet } = await readXlsx(
+            write({ columns: COLUMNS, autoWidthMax: 50, autoWidthRows: 2 }, [
+                { id: 1, full_name: 'Ana' },
+                { id: 22222, full_name: 'Bernardino' },
+            ]),
+        );
+        // The header and the first record are the two rows measured: "id"
+        // is 2 and "Full name" is 9; the second record comes too late.
+        assert.ok(sheet.includes(measured(1, 2)), sheet);
+        assert.ok(sheet.includes(measured(2, 9)), sheet);
+    });
+
+    it('starts sending the sheet once the rows it measures are in', () => {
+        /** How many bytes reach the sink before `finish`, for a long sheet. */
+        function sentBeforeFinish(options: XlsxWriterOptions): number {
+            let sent = 0;
+            const writer = new XlsxWriter((bytes) => (sent += bytes.length), {
+                compressionLevel: 0,
+                autoWidthMax: 50,
+                ...options,
+            });
+            const line = 'x'.repeat(100);
+            for (let row = 0; row < 2000; row++) writer.writeRow([line]);
+            return sent;
+        }
+        // Measuring every row holds the sheet to the end; measuring ten lets
+        // it go out as it is written, so most of it is in the sink already.
+        const held = sentBeforeFinish({});
+        const streamed = sentBeforeFinish({ autoWidthRows: 10 });
+        assert.ok(held < 10 * 1000, `${held}`);
+        assert.ok(streamed > 100 * 1000, `${streamed}`);
+    });
 });
 
 describe('XlsxWriter: merged cells', () => {

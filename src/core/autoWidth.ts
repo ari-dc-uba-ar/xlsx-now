@@ -106,33 +106,76 @@ function badMaxError(max: number): Error {
     );
 }
 
+/** Why a min nobody can size a column by was refused. */
+function badMinError(min: number, max: number | undefined): Error {
+    return new Error(
+        `"${min}" is not an autoWidthMin: it is the narrowest a measured column may get, ` +
+            'in characters, so it has to be a number above 0' +
+            (max === undefined ? '.' : ` and no more than the autoWidthMax of ${max}.`),
+    );
+}
+
+/** Why a count of rows nobody can measure was refused. */
+function badRowsError(rows: number): Error {
+    return new Error(
+        `"${rows}" is not an autoWidthRows: it is how many rows of the sheet are measured, ` +
+            'so it has to be a whole number above 0.',
+    );
+}
+
+/** What a sheet asks of its meter besides the maximum. */
+export interface WidthMeterOptions {
+    /** The narrowest a column that measured something may get, in characters. */
+    min?: number | undefined;
+    /** How many rows are measured before the widths are settled. */
+    rows?: number | undefined;
+}
+
 /**
  * The widths of a sheet, as its cells go by: every cell is measured into the
- * column it lands in, and the column keeps the longest of them, up to the
- * maximum it was opened with.
+ * column it lands in, and the column keeps the longest of them, between the
+ * minimum and the maximum it was opened with.
  *
  * One meter per worksheet, and every worksheet has one — a sheet with no
  * `autoWidthMax` gets a meter that measures nothing, so nothing downstream
  * has to ask whether there is one. What it does have to ask is `measures`:
  * that is what says whether the sheet can go out as it is written or has to
- * wait for its last row.
+ * wait for more rows. A meter given `rows` stops measuring once that many
+ * rows are in, and from there on the sheet goes out as it is written.
  */
 export class WidthMeter {
     /** The longest cell seen per 0-based column; a hole is a column with nothing in it. */
     private readonly widths: number[] = [];
     private readonly max: number;
-    /** Whether this meter was given a maximum at all — a sheet's own answer. */
-    readonly measures: boolean;
+    private readonly min: number;
+    /** The rows left to measure; `Infinity` when every row is. */
+    private rowsLeft: number;
+    private measuring: boolean;
 
-    constructor(max: number | undefined) {
+    constructor(max: number | undefined, options: WidthMeterOptions = {}) {
+        const { min, rows } = options;
         if (max !== undefined && !(Number.isFinite(max) && max > 0)) throw badMaxError(max);
-        this.measures = max !== undefined;
+        if (min !== undefined && !(Number.isFinite(min) && min > 0 && min <= (max ?? min))) {
+            throw badMinError(min, max);
+        }
+        if (rows !== undefined && !(Number.isInteger(rows) && rows > 0)) throw badRowsError(rows);
+        this.measuring = max !== undefined;
         this.max = max ?? 0;
+        this.min = min ?? 0;
+        this.rowsLeft = rows ?? Number.POSITIVE_INFINITY;
+    }
+
+    /**
+     * Whether the cells are still being measured — and so whether the sheet
+     * has to wait before its `<cols>` can be written.
+     */
+    get measures(): boolean {
+        return this.measuring;
     }
 
     /** One cell, in the column it was written in. */
     see(column: number, value: NativeValue, shown?: number, wraps?: boolean): void {
-        if (!this.measures) return;
+        if (!this.measuring) return;
         const length = cellTextLength(value, shown, wraps);
         if (!length) return;
         const width = length > this.max ? this.max : length;
@@ -140,14 +183,25 @@ export class WidthMeter {
     }
 
     /**
+     * One row is in. The last one the meter was asked to measure settles the
+     * widths: what comes after it is written, not measured.
+     */
+    endRow(): void {
+        if (!this.measuring) return;
+        this.rowsLeft--;
+        if (this.rowsLeft <= 0) this.measuring = false;
+    }
+
+    /**
      * What every column measured, as the `width` a `<col>` is written with —
-     * the characters it counted, plus the padding Excel measures a column by.
-     * A column nobody wrote anything in is a hole: it keeps whatever
-     * `columnFormats` says about it, and Excel's default width when that says
-     * nothing either.
+     * the characters it counted, raised to the minimum, plus the padding
+     * Excel measures a column by. A column nobody wrote anything in is a
+     * hole: it keeps whatever `columnFormats` says about it, and Excel's
+     * default width when that says nothing either — the minimum is for the
+     * columns that measured something, not for every column of the sheet.
      */
     columnWidths(): readonly number[] {
         // `map` keeps the holes as holes, which is what the sparse array is for.
-        return this.widths.map(columnWidth);
+        return this.widths.map((width) => columnWidth(width < this.min ? this.min : width));
     }
 }

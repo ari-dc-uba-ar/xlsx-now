@@ -871,6 +871,17 @@ columnFormats: { A: { width: 3 }, D: { hidden: true } },
 autoWidthMax: 40,   // A stays at 3, D is measured and stays hidden
 ```
 
+**A floor for the narrow ones: `autoWidthMin`.** A column whose longest cell
+is shorter than this many characters is widened to it. Only a column that
+measured something is raised — a column nobody wrote in keeps Excel's default
+width, minimum or not. It has to be no more than `autoWidthMax`, and it does
+nothing without it: the minimum is part of the measuring.
+
+```js
+autoWidthMax: 40,
+autoWidthMin: 6,    // a column of "S"/"N" comes out 6 wide, not 1
+```
+
 **What it costs.** `<cols>` is written before the first row of the worksheet
 and the widths are not known until the last one, so a sheet that measures
 itself is held in memory until it closes and then goes into the archive whole.
@@ -880,9 +891,27 @@ sheets never holds more than the one it is writing. Without `autoWidthMax` —
 the default — nothing is measured, nothing is held, and the sheet goes out in
 batches as it is written, exactly as before.
 
-Like `columns`, `columnFormats` and the freezes, `autoWidthMax` can be given
-in the writer options as the workbook's default and again on a `#worksheet`
-command for the sheet it opens.
+This is not a choice of the writer's: the schema puts `<cols>` ahead of
+`<sheetData>` ([ECMA-376][ecma376] §18.3.1.99), and a width is not part of a
+style — the `<xf>` a style is written as has no width in it — so there is no
+way to name it early and fill it in at the end, the way `styles.xml` is.
+
+**Measuring only the start: `autoWidthRows`.** Given, only that many rows of
+the sheet are measured — the header row counts as one. Once they are in, the
+widths are settled, `<cols>` is written and the sheet goes out in batches as
+it is written from there on, so what is held is those rows and not the whole
+sheet. The price is that a cell further down, longer than anything measured,
+is not measured: it shows clipped, or as `##########` if it is a date.
+`autoWidthMax` still caps what the measured rows can ask for.
+
+```js
+autoWidthMax: 40,
+autoWidthRows: 1000,   // the first thousand rows decide; the rest stream
+```
+
+Like `columns`, `columnFormats` and the freezes, `autoWidthMax`,
+`autoWidthMin` and `autoWidthRows` can be given in the writer options as the
+workbook's default and again on a `#worksheet` command for the sheet it opens.
 
 ### Frozen rows and columns
 
@@ -967,7 +996,8 @@ const xlsxStream = createXlsxStream({
 ```
 
 The command carries the sheet's own configuration — `columns`,
-`columnFormats`, `autoWidthMax`, `freezeRows`, `freezeColumns` — and what it leaves out falls
+`columnFormats`, `autoWidthMax`, `autoWidthMin`, `autoWidthRows`, `freezeRows`,
+`freezeColumns` — and what it leaves out falls
 back to the writer options,
 which are the workbook's defaults. So a table split across sheets repeats
 nothing:
@@ -1104,8 +1134,8 @@ await writeXlsxFile('reportes.xlsx', {
 
 `sheets` is itself a `ForAwaitable`, so the list can be an array as above or a
 source that yields one report at a time. Each sheet carries the whole of
-`SheetOptions` — `columns`, `columnFormats`, `autoWidthMax`, `freezeRows`,
-`freezeColumns` — and whatever it leaves out falls back to the writer options,
+`SheetOptions` — `columns`, `columnFormats`, `autoWidthMax`, `autoWidthMin`,
+`autoWidthRows`, `freezeRows`, `freezeColumns` — and whatever it leaves out falls back to the writer options,
 exactly as a `#worksheet` command does.
 
 Nothing is buffered and nothing runs early: a sheet's `rows` is read only
