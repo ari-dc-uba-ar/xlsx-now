@@ -54,22 +54,27 @@
     "example:umd:browser": "npm run build && node dist/examples/browser/serve.js",
     "example:umd:browser:test": "npm run build && PAGE_PATH=/examples/umd/index.html OUT_FILE=out/example-umd-browser.xlsx node dist/examples/browser/run-in-chromium-test.js"
   },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
+  },
   "dependencies": {
     "fflate": "^0.8.3",
     "saxes": "^6.0.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.6.3",
     "@types/yauzl": "^3.4.0",
     "c8": "^12.0.0",
     "exceljs": "^4.4.0",
-    "mocha": "^12.0.0-rc.5",
-    "playwright-core": "^1.62.1",
-    "qa-control": "^0.10.2",
-    "rollup": "^4.62.4",
+    "mocha": "^12.0.2",
+    "playwright-core": "^1.63.0",
+    "qa-control": "^0.11.3",
+    "rollup": "^4.63.5",
     "server4test": "^1.0.2",
-    "temporal-polyfill": "^1.0.4",
+    "temporal-polyfill": "^1.0.5",
     "typescript": "^5.9.3",
     "yauzl": "^3.4.0"
   },
@@ -80,6 +85,7 @@
     "gha": "all",
     "multilang": "no",
     "test-appveyor": true,
+    "filenameMainDoc": "README.md",
     "silenced": [
       "packagejson_main_file_1_does_not_exists",
       "invalid_files_section_in_package_json"

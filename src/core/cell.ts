@@ -167,12 +167,11 @@ function toLocalISOString(date:Date) {
  * `getTime()` is UTC, and taking that as the serial moves every date by the
  * writer's own offset — three hours in Buenos Aires, which is enough to land
  * a midnight on the day before. So under `local`, the default,
- * `getTimezoneOffset()` — what the date itself says its offset is, daylight
- * saving and all — is taken off first, and what gets written is the same
- * reading `getFullYear()` and `getHours()` give.
- *
- * Under `utc` that step is skipped and the instant goes in as it is, which is
- * the right answer for a `Date` that was never a local calendar to begin with.
+ * `getTimezoneOffset()` can't be used because before 1920 (depending on the country)
+ * timezone offsets could have seconds. JS uses them but doesn't return them in the function.
+ * Then, because we need the same wall clock we use the ISO representation to get it.
+ * The key here to move between UTC and LOCAL is mix the constructor and the functions.
+ * ISO constructor and funcions suppose UTC, splited integers y,m,d,h,m,s suppose local.
  */
 export function excelSerial(value: Date, dates: WriteDates = 'local'): number {
     const wall =
