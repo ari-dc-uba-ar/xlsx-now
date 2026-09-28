@@ -242,9 +242,11 @@ export class XlsxWriter {
             this.merges,
         );
         this.rowNumber++;
+        this.widths.endRow();
         // A sheet that is measuring itself has nowhere to push to: its `<cols>`
         // is written from rows that have not arrived yet, so it waits for its
-        // last one. Any other sheet goes out as it is written.
+        // last one — or for the last of the `autoWidthRows` it measures. Any
+        // other sheet goes out as it is written.
         if (!this.widths.measures && this.batch.length >= PUSH_BATCH_CHARS) this.pushBatch();
     }
 
@@ -259,6 +261,8 @@ export class XlsxWriter {
         const columns = sheet.columns ?? this.defaults.columns;
         const columnFormats = sheet.columnFormats ?? this.defaults.columnFormats;
         const autoWidthMax = sheet.autoWidthMax ?? this.defaults.autoWidthMax;
+        const autoWidthMin = sheet.autoWidthMin ?? this.defaults.autoWidthMin;
+        const autoWidthRows = sheet.autoWidthRows ?? this.defaults.autoWidthRows;
         // A header row with no column in it is nobody's intention, so an
         // empty list reads as the rows mode — which is how a sheet opts out
         // of the columns the workbook declared.
@@ -270,7 +274,7 @@ export class XlsxWriter {
         };
 
         this.sheetNames.push(name);
-        this.widths = new WidthMeter(autoWidthMax);
+        this.widths = new WidthMeter(autoWidthMax, { min: autoWidthMin, rows: autoWidthRows });
         this.merges = new MergeTable();
         this.columns = columnStyles(columnFormats);
         this.pendingHeader = { freeze, columnFormats };

@@ -49,8 +49,26 @@ export interface SheetOptions {
      * `<cols>` comes before the first one: the worksheet is held in memory
      * until it closes and goes into the archive whole. That is the cost of
      * asking, and it is per sheet — a `#worksheet` command starts a new one.
+     * `autoWidthRows` is how to pay less of it.
      */
     autoWidthMax?: number;
+    /**
+     * The narrowest a measured column may get, in characters: a column whose
+     * longest cell is shorter is widened to this. Only a column that measured
+     * something is raised to it — a column nobody wrote in keeps Excel's
+     * default width. It has to be no more than `autoWidthMax`, and without
+     * `autoWidthMax` nothing is measured and it does nothing.
+     */
+    autoWidthMin?: number;
+    /**
+     * How many rows of the sheet are measured, header row included. Once that
+     * many are in, the widths are settled, `<cols>` is written and the sheet
+     * goes out as it is written from there on — so only those rows are held
+     * in memory, not the whole sheet. A later cell longer than what was
+     * measured is not measured, and shows clipped. Left out, every row is
+     * measured. Without `autoWidthMax` it does nothing.
+     */
+    autoWidthRows?: number;
     /** Rows fixed at the top of the sheet. Defaults to 0, or to 1 with `columns`. */
     freezeRows?: number;
     /**

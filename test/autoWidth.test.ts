@@ -152,4 +152,50 @@ describe('WidthMeter', () => {
             assert.throws(() => new WidthMeter(max), /autoWidthMax/);
         }
     });
+
+    it('raises a measured column to the minimum, and leaves the wider ones alone', () => {
+        const meter = new WidthMeter(50, { min: 5 });
+        meter.see(0, 'ab');
+        meter.see(1, 'abcdefgh');
+        assert.deepEqual([...meter.columnWidths()], [columnWidth(5), columnWidth(8)]);
+    });
+
+    it('gives no width to a column that measured nothing, minimum or not', () => {
+        const meter = new WidthMeter(50, { min: 5 });
+        meter.see(2, 'ab');
+        const widths = meter.columnWidths();
+        assert.equal(widths[0], undefined);
+        assert.equal(widths[2], columnWidth(5));
+    });
+
+    it('refuses a minimum no column can be sized by, or one above the maximum', () => {
+        for (const min of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 11]) {
+            assert.throws(() => new WidthMeter(10, { min }), /autoWidthMin/);
+        }
+        assert.doesNotThrow(() => new WidthMeter(10, { min: 10 }));
+    });
+
+    it('stops measuring once the rows it was asked for are in', () => {
+        const meter = new WidthMeter(50, { rows: 2 });
+        meter.see(0, 'ab');
+        meter.endRow();
+        assert.equal(meter.measures, true);
+        meter.see(0, 'abc');
+        meter.endRow();
+        assert.equal(meter.measures, false);
+        meter.see(0, 'a much longer line');
+        assert.equal(meter.columnWidths()[0], columnWidth(3));
+    });
+
+    it('measures every row when it was given no count of them', () => {
+        const meter = new WidthMeter(50);
+        for (let row = 0; row < 1000; row++) meter.endRow();
+        assert.equal(meter.measures, true);
+    });
+
+    it('refuses a count of rows nobody can measure', () => {
+        for (const rows of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+            assert.throws(() => new WidthMeter(10, { rows }), /autoWidthRows/);
+        }
+    });
 });
