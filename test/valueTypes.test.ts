@@ -11,9 +11,11 @@ import {
 } from '../src/core/styles.js';
 import type { CellRow } from '../src/core/types.js';
 import {
+    DEFAULT_DURATION_FORMAT,
     bigintValue,
     dateValue,
     defaultTypes,
+    durationValue,
     plainDateTimeValue,
     plainDateValue,
     plainTimeValue,
@@ -136,6 +138,7 @@ describe('the Temporal values', () => {
         assert.equal(types.get(Temporal.PlainDate)?.convert, plainDateValue);
         assert.equal(types.get(Temporal.PlainDateTime)?.convert, plainDateTimeValue);
         assert.equal(types.get(Temporal.PlainTime)?.convert, plainTimeValue);
+        assert.equal(types.get(Temporal.Duration)?.convert, durationValue);
     });
 
     it('is looked up by the class, the way every other type is', () => {
@@ -143,6 +146,24 @@ describe('the Temporal values', () => {
             Temporal.PlainDate.from('2024-01-15'),
         );
         assert.deepEqual(value, plainDateValue(Temporal.PlainDate.from('2024-01-15'), PLAIN));
+    });
+});
+
+describe('durationValue', () => {
+    it('writes a Duration as the days it lasts, under an elapsed format', () => {
+        assert.deepEqual(durationValue(Temporal.Duration.from('PT30H')), {
+            v: 1.25,
+            numFmt: DEFAULT_DURATION_FORMAT,
+            width: 8,
+        });
+        assert.equal(durationValue(Temporal.Duration.from({ days: 1, hours: 6 })).v, 1.25);
+        assert.equal(durationValue(Temporal.Duration.from('-PT12H')).v, -0.5);
+    });
+
+    it('refuses the parts of a duration that are not a fixed number of days', () => {
+        for (const text of ['P1Y', 'P1M', 'P1W']) {
+            assert.throws(() => durationValue(Temporal.Duration.from(text)), /not a fixed number of days/, text);
+        }
     });
 });
 

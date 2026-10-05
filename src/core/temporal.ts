@@ -1,7 +1,8 @@
 // `Temporal`, from a package that does not depend on it.
 //
-// The reader builds `Temporal.PlainDate`, `PlainDateTime` and `PlainTime` when
-// it is asked to, and the writer takes the three of them back. Nothing else of
+// The reader builds `Temporal.PlainDate`, `PlainDateTime`, `PlainTime` and
+// `Duration` when it is asked to, and the writer takes the four of them back.
+// Nothing else of
 // that API is used: `from` to build one, `toString` to read it, and the classes
 // themselves for the type map to be keyed on.
 //
@@ -47,7 +48,30 @@ export interface PlainTime {
 }
 
 /**
- * One of the three classes, as this package uses it: the `from` that builds a
+ * A length of time — what a cell under an elapsed format (`[h]:mm`) holds.
+ *
+ * The calendar fields are here because a `Duration` can carry them, and the
+ * writer has to refuse one that does: a month is not a fixed number of days,
+ * so there is no fraction of a day to write it as.
+ */
+export interface Duration {
+    readonly sign: number;
+    readonly years: number;
+    readonly months: number;
+    readonly weeks: number;
+    readonly days: number;
+    readonly hours: number;
+    readonly minutes: number;
+    readonly seconds: number;
+    readonly milliseconds: number;
+    readonly microseconds: number;
+    readonly nanoseconds: number;
+    /** The ISO duration: `PT30H`. */
+    toString(): string;
+}
+
+/**
+ * One of the classes, as this package uses it: the `from` that builds a
  * value out of its ISO text, and the `prototype` the type map is keyed on.
  */
 export interface TemporalClass<T> {
@@ -60,6 +84,7 @@ export interface TemporalApi {
     readonly PlainDate: TemporalClass<PlainDate>;
     readonly PlainDateTime: TemporalClass<PlainDateTime>;
     readonly PlainTime: TemporalClass<PlainTime>;
+    readonly Duration: TemporalClass<Duration>;
 }
 
 /**

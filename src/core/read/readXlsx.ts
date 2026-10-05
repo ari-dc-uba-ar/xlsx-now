@@ -10,7 +10,16 @@ import { readDates, type ReadDates } from './dates.js';
 import { NO_FORMATS, readNumberFormats, type NumberFormats } from './numberFormats.js';
 import { bytesAccess, type RandomAccess } from './randomAccess.js';
 import { readSharedStrings } from './sharedStrings.js';
-import type { ReadMode, ReadModes, ReadRow, ReadValue, SheetData } from './types.js';
+import type {
+    CellOf,
+    ReadCell,
+    ReadFields,
+    ReadMode,
+    ReadModes,
+    ReadRow,
+    ReadValue,
+    SheetData,
+} from './types.js';
 import {
     PACKAGE_ROOT,
     partOfType,
@@ -23,7 +32,7 @@ import {
     type Relationship,
 } from './workbook.js';
 import type { CellContext, RawCell } from './worksheet.js';
-import { cellValue, readRows, styledCell } from './worksheet.js';
+import { cellValue, readCell, readRows, styledCell } from './worksheet.js';
 import { decodeChunks } from './xml.js';
 import { entryChunks, readCentralDirectory, readEntryText, type ZipEntry } from './zipReader.js';
 
@@ -31,7 +40,10 @@ import { entryChunks, readCentralDirectory, readEntryText, type ZipEntry } from 
 export type XlsxSource = Uint8Array | RandomAccess;
 
 export interface ReadOptions<M extends ReadMode> {
-    /** What each cell comes back as. Defaults to `values`. */
+    /**
+     * What each cell comes back as: `values`, `cells`, or the fields of a
+     * `ReadCell` named one by one. Defaults to `values`.
+     */
     mode?: M;
     /**
      * What a date cell is built as: a `Temporal` value, a `Date` read in UTC, a
@@ -44,6 +56,17 @@ export interface ReadOptions<M extends ReadMode> {
      * date it reads.
      */
     dates?: ReadDates;
+    /**
+     * The language the text of a cell (`w`) is shown in: `es` or an `es-…`
+     * for Spanish, anything else for English. It decides the names of the
+     * months, the separators of a number, and the short date a file leaves to
+     * the machine that opens it.
+     *
+     * Left out, a date is shown in ISO, which no language reads wrong — and a
+     * warning says so, once, the first time a cell is asked for its text
+     * without one.
+     */
+    lang?: string;
 }
 
 /** One worksheet of an open package, not read yet. */
@@ -59,6 +82,24 @@ export interface XlsxSheetReader<C> {
 /** An open package: its sheets, in the order the workbook declares them. */
 export interface XlsxReader<C> {
     readonly sheets: readonly XlsxSheetReader<C>[];
+    /**
+     * Whether the workbook counts its days from 1904. Only a serial read out
+     * of `_v` needs it: every other field has already taken it into account.
+     */
+    readonly date1904: boolean;
+}
+
+/** Whether the warning about `w` with no `lang` has been given yet. */
+let warnedNoLang = false;
+
+/** The warning itself: once per process, which is as often as it says something new. */
+function warnNoLang(): void {
+    if (warnedNoLang) return;
+    warnedNoLang = true;
+    console.warn(
+        'xlsx-now: a workbook was read for the text of its cells (w) with no lang: ' +
+            'some of those texts may not look like what the user saw in the spreadsheet application.',
+    );
 }
 
 /**
@@ -72,10 +113,10 @@ export interface XlsxReader<C> {
  * are reached through the central directory, so there is no first sheet to
  * get past.
  */
-export async function openXlsx<M extends ReadMode = 'values'>(
+export async function openXlsx<const M extends ReadMode = 'values'>(
     source: XlsxSource,
     options: ReadOptions<M> = {},
-): Promise<XlsxReader<ReadModes[M]>> {
+): Promise<XlsxReader<CellOf<M>>> {
     // Before the file is touched: an option that cannot be honoured is not
     // something to find out about with a sheet already half read.
     const dates = readDates(options.dates);
@@ -109,18 +150,17 @@ export async function openXlsx<M extends ReadMode = 'values'>(
         formats,
         date1904: workbook.date1904,
         dates,
+        lang: options.lang,
     };
 
+    const mode: ReadMode = options.mode ?? 'values';
+    if (typeof mode === 'object' && mode.w && options.lang === undefined) warnNoLang();
     // The one cast in the reader, and what it stands in for is the link
     // between the `mode` asked for and the shape it gives back — which the
     // signature states and a value cannot carry.
-    const convert = (
-        options.mode === 'cells'
-            ? (raw: RawCell) => styledCell(raw, context)
-            : (raw: RawCell) => cellValue(raw, context)
-    ) as (raw: RawCell) => ReadModes[M];
+    const convert = converterFor(mode, context) as (raw: RawCell) => CellOf<M>;
 
-    const sheets = workbook.sheets.map((sheet): XlsxSheetReader<ReadModes[M]> => {
+    const sheets = workbook.sheets.map((sheet): XlsxSheetReader<CellOf<M>> => {
         const relationship = relationships.get(sheet.relationshipId);
         if (!relationship) {
             throw new Error(
@@ -128,11 +168,31 @@ export async function openXlsx<M extends ReadMode = 'values'>(
             );
         }
         const part = relationship.part;
-        const rows = (): AsyncIterable<ReadRow<ReadModes[M]>> =>
+        const rows = (): AsyncIterable<ReadRow<CellOf<M>>> =>
             readRows(decodeChunks(entryChunks(access, entry(part))), convert, part);
-        return { name: sheet.name, rows, read: () => collect(sheet.name, rows()) };
+        return {
+            name: sheet.name,
+            rows,
+            read: () => collect(sheet.name, rows(), workbook.date1904),
+        };
     });
-    return { sheets };
+    return { sheets, date1904: workbook.date1904 };
+}
+
+/** What turns a cell into what the mode says. */
+function converterFor(
+    mode: ReadMode,
+    context: CellContext,
+): (raw: RawCell) => ReadValue | StyledCell | Partial<ReadCell> {
+    if (mode === 'values') return (raw) => cellValue(raw, context);
+    if (mode === 'cells') return (raw) => styledCell(raw, context);
+    if (typeof mode !== 'object' || mode === null) {
+        throw new Error(
+            `mode: "${String(mode)}" is not how a cell can be read: say values, cells, or the fields of a cell.`,
+        );
+    }
+    const fields: ReadFields = mode;
+    return (raw) => readCell(raw, context, fields);
 }
 
 /**
@@ -144,7 +204,11 @@ export async function openXlsx<M extends ReadMode = 'values'>(
  * element written only to give the row a height — does not make the sheet any
  * taller, since `maxRow` is meant to say where the data ends.
  */
-async function collect<C>(name: string, rows: AsyncIterable<ReadRow<C>>): Promise<SheetData<C>> {
+async function collect<C>(
+    name: string,
+    rows: AsyncIterable<ReadRow<C>>,
+    date1904: boolean,
+): Promise<SheetData<C>> {
     const cells: (C | undefined)[][] = [];
     let maxCol = 0;
     for await (const row of rows) {
@@ -154,7 +218,7 @@ async function collect<C>(name: string, rows: AsyncIterable<ReadRow<C>>): Promis
         if (row.cells.length > maxCol) maxCol = row.cells.length;
     }
     for (let index = 0; index < cells.length; index++) cells[index] ??= [];
-    return { name, cells, maxCol, maxRow: cells.length };
+    return { name, cells, maxCol, maxRow: cells.length, date1904 };
 }
 
 /**
@@ -168,14 +232,14 @@ async function collect<C>(name: string, rows: AsyncIterable<ReadRow<C>>): Promis
  * asCells.cells[0]?.[1]                     // { v: 45306, s: { numFmt: 14 } }
  * ```
  */
-export async function readXlsx<M extends ReadMode = 'values'>(
+export async function readXlsx<const M extends ReadMode = 'values'>(
     source: XlsxSource,
     options: ReadOptions<M> = {},
-): Promise<SheetData<ReadModes[M]>[]> {
+): Promise<SheetData<CellOf<M>>[]> {
     const reader = await openXlsx(source, options);
-    const sheets: SheetData<ReadModes[M]>[] = [];
+    const sheets: SheetData<CellOf<M>>[] = [];
     for (const sheet of reader.sheets) sheets.push(await sheet.read());
     return sheets;
 }
 
-export type { ReadMode, ReadRow, ReadValue, SheetData, StyledCell };
+export type { CellOf, ReadCell, ReadFields, ReadMode, ReadModes, ReadRow, ReadValue, SheetData, StyledCell };

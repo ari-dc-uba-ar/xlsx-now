@@ -23,7 +23,7 @@ const PHANTOM_LEAP_DAY_SERIAL = 60;
 /** First serial the plain day count already agrees with: 01/03/1900. */
 const FIRST_UNSHIFTED_SERIAL = 61;
 /**
- * The lowest serial a cell can hold. Zero is Excel's own "day 0", which is
+ * The lowest serial the writer writes. Zero is Excel's own "day 0", which is
  * how a time of day with no date is stored — `0.4375` is half past ten in the
  * morning and nothing else — so it is a value to keep, not one to refuse.
  * Below it there is nothing: a negative serial is a date Excel has no
@@ -138,10 +138,11 @@ export type DateKind = 'date' | 'dateTime' | 'time';
  * A whole number is a day. A fraction of one is the time of day next to it. And
  * under `1` there is no day left: serial 0 is Excel's own "day zero", where a
  * time with no date is stored, so `0.4375` is half past ten in the morning and
- * nothing else.
+ * nothing else. Below zero there is a day again: the reader carries the count
+ * on backwards, so `-0.5` is noon of 30/12/1899.
  */
 export function serialKind(serial: number): DateKind {
-    if (serial < 1) return 'time';
+    if (serial >= 0 && serial < 1) return 'time';
     return Number.isInteger(serial) ? 'date' : 'dateTime';
 }
 
@@ -208,6 +209,10 @@ export function excelSerial(value: Date, dates: WriteDates = 'local'): number {
  * lands on 31/12/1899 — the day `excelSerial` sends it back from, so a time
  * survives the round trip.
  *
+ * A serial below zero is a date Excel has no numbering for and shows as
+ * `######`, but one a file can still hold, and it has one meaning: the count
+ * carried on backwards, the same one `isoSerial` gives. `-1` is 30/12/1899.
+ *
  * The one serial with no answer is 60, [the day Excel has and the calendar
  * does not](https://learn.microsoft.com/office/troubleshoot/excel/wrongly-assumes-1900-is-leap-year):
  * there is no `Date` for 29/02/1900, and the two candidates on either side of
@@ -221,8 +226,8 @@ export function fromExcelSerialUtc(serial: number): Date {
             `Serial ${serial} is 29/02/1900, a day this spreadsheet format has and the calendar does not.`,
         );
     }
-    if (!(serial >= MIN_SERIAL)) {
-        throw new RangeError(`Serial ${serial} is not a date: a sheet numbers its days from 0.`);
+    if (!Number.isFinite(serial)) {
+        throw new RangeError(`Serial ${serial} is not a date: a serial is a number of days.`);
     }
     const days = serial < PHANTOM_LEAP_DAY_SERIAL ? serial + 1 : serial;
     // Rounded to the millisecond, because that is as fine as a `Date` gets
@@ -230,6 +235,24 @@ export function fromExcelSerialUtc(serial: number): Date {
     // `45306.520833333336`, and taken at face value it comes back a
     // millisecond short of the half hour it went in as.
     return new Date(Math.round((days - EXCEL_EPOCH_OFFSET_DAYS) * MS_PER_DAY));
+}
+
+/**
+ * The serial of a wall clock written in ISO text — `2024-01-15` or
+ * `2024-01-15T12:30:00` — with the numbering carried on below zero.
+ *
+ * A sheet has no serial before 31/12/1899, and `excelSerial` refuses one. This
+ * is for the other direction, where the date is already in hand and the
+ * caller asked for a number: `1850-06-20` is as many days before day 0 as it
+ * is, which is a number with one meaning, even if Excel shows it as `######`.
+ * Above zero it is the serial `excelSerial` gives the same day.
+ */
+export function isoSerial(wall: string): number {
+    const full = wall.includes('T') ? wall : `${wall}T00:00:00`;
+    const time = new Date(`${full}Z`).getTime();
+    if (Number.isNaN(time)) throw new Error(`"${wall}" is not a date.`);
+    const days = time / MS_PER_DAY + EXCEL_EPOCH_OFFSET_DAYS;
+    return days < FIRST_UNSHIFTED_SERIAL ? days - 1 : days;
 }
 
 /**

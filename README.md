@@ -613,6 +613,12 @@ createXlsxStream({ rows: [[Temporal.PlainDate.from('2024-01-15')]] });
 | `Temporal.PlainDate` | the day | `dateFormat` |
 | `Temporal.PlainDateTime` | the day and the fraction of it | `dateTimeFormat` |
 | `Temporal.PlainTime` | the fraction alone | `timeFormat` |
+| `Temporal.Duration` | the days it lasts: `PT30H` is `1.25` | `[h]:mm:ss` |
+
+A `Duration` is a length and not a point in time, so it is shown under an
+elapsed format — `30:00:00`, not a date — and only the parts of it that are a
+fixed length are taken: one with years, months or weeks is refused, since how
+many days a month lasts depends on which month it is.
 
 They are entries of [`types`](#types-the-workbook-knows-types) like `Date` is,
 added when the environment has a `Temporal` — native, or a polyfill imported
@@ -696,10 +702,11 @@ a conversion that knows its own magnitude says so, as `dateValue` does.
 | `Temporal.PlainDate` | the day, as the serial of it |
 | `Temporal.PlainDateTime` | the day and the time in it |
 | `Temporal.PlainTime` | the fraction of a day a sheet stores a time as |
+| `Temporal.Duration` | the days it lasts, under `[h]:mm:ss` |
 | `BigInt` | a number while a cell can hold one exactly, text past that |
 | `URL` | its `href` |
 
-The three `Temporal` entries are there when the environment has a `Temporal`:
+The four `Temporal` entries are there when the environment has a `Temporal`:
 native, or a polyfill installed by importing it — which happens before anything
 that could use it, so what the map holds is settled once, when the package
 loads.
@@ -1198,17 +1205,17 @@ sheets[0].maxCol      // 2
 ```
 
 Every sheet comes back, in the order the workbook declares them, and each one
-is a `{ name, cells, maxCol, maxRow }`. The grid is **dense in rows** — there
+is a `{ name, cells, maxCol, maxRow, date1904 }`. The grid is **dense in rows** — there
 is an entry for every row up to the last one that holds anything, and a row
 that holds nothing is an empty array — and **ragged in columns**: each row
 ends at its own last cell, and `maxCol` says how wide the sheet is as a whole.
 A position with no cell in it is `undefined`; a cell that is there and empty
 is `null`. The same difference the writer makes on the way in.
 
-### The two modes
+### The modes
 
-`values` is the default and gives the value alone. `cells` gives the
-`StyledCell` the writer takes:
+`values` (`READ_VALUES`) is the default and gives the value alone. `cells`
+(`READ_CELLS`) gives the `StyledCell` the writer takes:
 
 ```js
 const [sheet] = await readXlsx(bytes, { mode: 'cells' });
@@ -1225,6 +1232,73 @@ be read, changed and written again without anything in the middle knowing what
 a number format is. `t` is only set where the writer would not work it out on
 its own: the cached string result of a formula, and an error.
 
+### The fields of a cell
+
+A mode can also be an object that names the fields a cell comes back with:
+
+```js
+const [sheet] = await readXlsx(bytes, { mode: { w: true, _v: true }, lang: 'es' });
+sheet.cells[1][1]     // { v: 1234.5, w: '1.234,50', _v: '1234.5' }
+```
+
+There are two kinds of field, and they never share a name. **The ones that
+start with `_` are the file's own**, as the `<c>` spells them and with nothing
+made of them. **The rest are what the reader makes of those**, named as the
+writer names them, so `v`, `s`, `f` and `t` go straight back into a workbook:
+
+| field | what it is |
+| --- | --- |
+| `v` | the value, built as `dates` says — there unless the mode says `v: false` |
+| `s` | `{ numFmt }`, when the format is not `General` |
+| `f` | the formula |
+| `t` | `str` or `e`, only where the writer would not work it out |
+| `w` | the text the cell shows — see below |
+| `kind` | what the number is, by its format: `number`, `date` or `elapsed` — only for a cell that holds a number or a date written out; it is how a caller who reads dates as serials tells `45306` the day from `45306` the amount |
+| `_t` | the `t` attribute: `s`, `n`, `b`, `str`, `inlineStr`, `e`, `d`, or nothing for a number |
+| `_s` | the `s` attribute: the index of the style in `cellXfs` |
+| `_v` | the text of `<v>` — the index into the table for a shared string, the serial in the workbook's own epoch for a date |
+| `_f` | the text of `<f>` |
+| `_is` | the text of `<is>`, the string a cell carries itself |
+
+A field the cell has nothing for is left out, the way a cell of the writer's
+would leave it out. `READ_RAW` is the mode for the file's own fields alone:
+`{ v: false, _t: true, _s: true, _v: true, _f: true, _is: true }`. The type of
+what comes back follows the mode: `{ w: true }` reads cells whose `w` is a
+`string`.
+
+`date1904` is on every sheet and on the workbook `openXlsx` opens, because a
+serial read out of `_v` needs it; every other field has taken it into account
+already.
+
+#### `w`: the text the cell shows
+
+A file does not store what a cell shows. It stores the value and the code of
+its format, and the text is what the application that opens it works out from
+the two — with the language of the machine filling in whatever the code leaves
+to it. So `w` is an approximation, and it is one on purpose: **a cell asked for
+its `w` always has one**.
+
+```js
+await readXlsx(bytes, { mode: { w: true }, lang: 'es' });
+```
+
+| the cell | `w` with `lang` | `w` without |
+| --- | --- | --- |
+| text, or an error | the text | the same |
+| a boolean | `VERDADERO`, `TRUE`… | `TRUE`, `FALSE` |
+| a number under `General` | as it is, with the decimals of the language: `1234,5` | `1234.5` |
+| a number under a code (`#,##0.00`, `0%`, `0.00E+00`, literals, sections) | the code applied, with the separators of the language: `1.234,50` | the code applied, with `.` and `,` |
+| a number under a code it does not take apart (a fraction, a condition) | as it is | as it is |
+| a date under a code | the code applied, names of months and days in the language | ISO: `2024-01-15`, `2024-01-15T10:20:00` |
+| a date under built-in format 14, which a file leaves to the machine | `dd/mm/yyyy` for `es`, `mm/dd/yyyy` otherwise | ISO |
+| a length of time under `[h]:mm` | `30:00` | `30:00` |
+| a date before 31/12/1899, a negative serial Excel shows as `######` | the day it is, under its code | ISO: `1850-06-20` |
+
+`lang` is `es` or an `es-…` for Spanish, and anything else for English. A date
+is shown in ISO with no `lang` because it is the one way of writing a date that
+nobody can read as a different one. Reading `w` without a `lang` says so on
+the console, once.
+
 ### Dates: `dates`, and the day that never was
 
 A date in a sheet is a number; the only thing that makes it a date is the
@@ -1233,7 +1307,7 @@ part of the styling it does read — for exactly two questions: which format
 each style shows, and whether that format writes a date. A number under one
 comes back as a date, and the same number under a plain format stays a number.
 
-*Which* date is the `dates` option, and there are four answers to the one
+*Which* date is the `dates` option, and there are five answers to the one
 number:
 
 ```js
@@ -1247,6 +1321,33 @@ await readXlsx(bytes, { dates: 'localDate' });  // Dates on the caller's clock
 | `utcDate` | `Date`, read in UTC | the same | the same |
 | `localDate` | `Date`, read locally | the same | the same |
 | `isoString` | `'2024-01-15'` | `'2024-01-15T12:00:00'` | `'10:30:00'` |
+| `serial` | `45306` | `45306.5` | `0.4375` |
+
+**`serial` is the number itself**, for a caller that has its own way of making
+a date out of one and would rather not have it made twice. It is always counted
+from 1900: a workbook that counts from 1904 has its serials shifted, so the
+same day is the same number whichever epoch the file declared. A date written
+out in text (below) becomes the number it would have had — and a day before
+31/12/1899 becomes a number below zero, the count carried on backwards. That is
+a number Excel cannot show, so a serial read this way is for a program to use,
+not one to write back into a sheet; `cells` with any other `dates` is what goes
+back.
+
+#### A length of time is not a date
+
+A number under an elapsed format — `[h]:mm`, `[mm]:ss`, `[ss]`, or built-in
+format 46 — is a length: `1.25` under `[h]:mm` is thirty hours, shown `30:00`,
+and not six in the morning of the first of January of 1900. It is read as one:
+
+| `dates` | `1.25` under `[h]:mm` |
+| --- | --- |
+| `temporal` | `Temporal.Duration` of `PT30H` |
+| `isoString` | `'PT30H'` |
+| `utcDate`, `localDate`, `serial` | `1.25`: a `Date` has no way to say a length |
+
+In hours and not in days — `PT30H` and not `P1DT6H` — because hours are what an
+elapsed format counts in. A length is not shifted by the 1904 epoch either:
+thirty hours are thirty hours whatever day the workbook starts on.
 
 **`temporal` is the default**, because it is the only one of the four that
 gives back what the file actually says. A sheet holds a wall clock and nothing
@@ -1290,9 +1391,15 @@ And there is no serial at all below 31/12/1899: the numbering starts there and
 does not go negative. A file with an older date has nothing to number it as,
 so it writes the day out in ISO text instead — the `t="d"` cell of the spec,
 which Excel itself does not write and which the reader takes for exactly that
-reason. It never becomes a serial on the way in: the text goes straight to
-whichever of the four `dates` was asked for, so `1850-06-20` reads as the day
-it says under all of them.
+reason. It never becomes a serial on the way in, except where a serial is what
+was asked for: the text goes straight to whichever of the other four `dates`
+was asked for, so `1850-06-20` reads as the day it says under all of them —
+and as `-18091` under `serial`.
+
+A file that writes such a day as a number anyway — `-18091` under a date
+format, which Excel shows as `######` — is read the same way: the count
+carried on backwards has one meaning, so it is given, under every `dates`,
+rather than refused. The writer still writes nothing below zero.
 
 ### Where the bytes come from
 
@@ -1383,7 +1490,8 @@ for a page with no build step, since `saxes` publishes CommonJS only.
 ### What the reader does not read
 
 - **Anything about how a cell looks** except its number format. Fonts, fills,
-  borders and alignment are in `styles.xml` and are not parsed; the runs of a
+  borders and alignment are in `styles.xml` and are not parsed — `_s` gives
+  the index of a cell's style, for whoever wants to look it up; the runs of a
   rich-text string come back joined, without their formatting.
 - **Merged ranges, column widths, freezes, hidden rows.** All of them are
   there in the parts and none is collected.

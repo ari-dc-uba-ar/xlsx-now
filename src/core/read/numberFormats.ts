@@ -16,24 +16,39 @@ const GENERAL = 0;
 /**
  * The formats every reader is born knowing, of the ones that are dates.
  *
- * 14 to 22 are the short dates and the times, 45 to 47 the elapsed ones, and
- * the two runs in between — 27 to 36 and 50 to 58 — are the same dates as
- * written in Japanese, Chinese and Korean locales. A file made in one of
- * those locales holds ordinary dates under those ids, so leaving them out
- * would come back as bare serial numbers rather than as an error.
+ * 14 to 22 are the short dates and the times, 45 and 47 the minutes and
+ * seconds of one, and the two runs in between — 27 to 36 and 50 to 58 — are
+ * the same dates as written in Japanese, Chinese and Korean locales. A file
+ * made in one of those locales holds ordinary dates under those ids, so
+ * leaving them out would come back as bare serial numbers rather than as an
+ * error.
  */
 const BUILTIN_DATE_IDS = new Set([
     14, 15, 16, 17, 18, 19, 20, 21, 22,
     27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
-    45, 46, 47,
+    45, 47,
     50, 51, 52, 53, 54, 55, 56, 57, 58,
 ]);
+
+/** The one built-in format that is a length of time: `[h]:mm:ss`. */
+const BUILTIN_ELAPSED_IDS = new Set([46]);
 
 /** The letters a format code shows a date or a time with. */
 const DATE_LETTERS = new Set(['y', 'd', 'h', 's', 'm']);
 
 /**
- * Whether a format code writes a date or a time.
+ * What a number under a format is:
+ *
+ * - `number` — a number, shown however the format says.
+ * - `date` — a day, a day and its hour, or an hour of the day: a point on the
+ *   calendar or on the clock.
+ * - `elapsed` — a length of time, which is what `[h]:mm` shows: `1.25` under
+ *   it is thirty hours, not the sixth hour of the first of January of 1900.
+ */
+export type FormatKind = 'number' | 'date' | 'elapsed';
+
+/**
+ * What a format code writes.
  *
  * A code is a template with literals in it, and the literals are the whole
  * difference between a format and its text: `#,##0 "días"` shows a number and
@@ -45,13 +60,16 @@ const DATE_LETTERS = new Set(['y', 'd', 'h', 's', 'm']);
  * Brackets are the one exception to being skipped: `[h]`, `[mm]` and `[ss]`
  * are elapsed time, which is the only thing in brackets that is a value
  * rather than an instruction. The rest — a colour, a condition, the `[$-409]`
- * of a locale — is not.
+ * of a locale — is not. And one of them is enough to make the whole code a
+ * length of time, whatever else it says: the `mm:ss` after `[h]` are the
+ * minutes and seconds of those hours, not of a day.
  *
  * `m` counts as a date letter although it is minutes as often as it is
  * months. Both are time, and which one it is only matters to whoever formats
  * the value, not to the reader deciding it is one.
  */
-export function isDateFormat(code: string): boolean {
+export function formatKind(code: string): FormatKind {
+    let kind: FormatKind = 'number';
     for (let index = 0; index < code.length; index++) {
         const char = code[index] as string;
         if (char === '"') {
@@ -62,11 +80,16 @@ export function isDateFormat(code: string): boolean {
         } else if (char === '[') {
             const end = code.indexOf(']', index + 1);
             const inside = code.slice(index + 1, end === -1 ? code.length : end);
-            if (/^[hms]+$/i.test(inside)) return true;
+            if (/^[hms]+$/i.test(inside)) return 'elapsed';
             index = end === -1 ? code.length : end;
-        } else if (DATE_LETTERS.has(char.toLowerCase())) return true;
+        } else if (DATE_LETTERS.has(char.toLowerCase())) kind = 'date';
     }
-    return false;
+    return kind;
+}
+
+/** Whether a format code writes a date or a time of day — see `formatKind`. */
+export function isDateFormat(code: string): boolean {
+    return formatKind(code) === 'date';
 }
 
 /**
@@ -86,6 +109,8 @@ export interface NumberFormats {
      * straight back to the writer.
      */
     forStyle(style: number | undefined): string | number | undefined;
+    /** What a number under this style is: a number, a date, or a length of time. */
+    kind(style: number | undefined): FormatKind;
     /** Whether a number under this style is a date rather than a number. */
     isDate(style: number | undefined): boolean;
 }
@@ -93,6 +118,7 @@ export interface NumberFormats {
 /** A workbook with no styles part, where nothing is a date. */
 export const NO_FORMATS: NumberFormats = {
     forStyle: () => undefined,
+    kind: () => 'number',
     isDate: () => false,
 };
 
@@ -133,13 +159,20 @@ export function readNumberFormats(xml: string): NumberFormats {
     // Worked out once per format rather than per cell: a sheet of a million
     // dates asks this a million times and there are only ever a handful of
     // answers.
-    const dateById = new Map<number, boolean>();
-    function isDateId(id: number): boolean {
-        const known = dateById.get(id);
+    const kindById = new Map<number, FormatKind>();
+    function kindOfId(id: number): FormatKind {
+        const known = kindById.get(id);
         if (known !== undefined) return known;
         const code = codes.get(id);
-        const answer = code === undefined ? BUILTIN_DATE_IDS.has(id) : isDateFormat(code);
-        dateById.set(id, answer);
+        const answer =
+            code !== undefined
+                ? formatKind(code)
+                : BUILTIN_ELAPSED_IDS.has(id)
+                  ? 'elapsed'
+                  : BUILTIN_DATE_IDS.has(id)
+                    ? 'date'
+                    : 'number';
+        kindById.set(id, answer);
         return answer;
     }
 
@@ -149,6 +182,7 @@ export function readNumberFormats(xml: string): NumberFormats {
             if (id === GENERAL) return undefined;
             return codes.get(id) ?? id;
         },
-        isDate: (style) => isDateId(formatId(style)),
+        kind: (style) => kindOfId(formatId(style)),
+        isDate: (style) => kindOfId(formatId(style)) === 'date',
     };
 }

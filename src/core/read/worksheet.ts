@@ -12,9 +12,19 @@
 // table it does not carry.
 import { columnIndex } from '../cell.js';
 import type { CellType, StyledCell } from '../types.js';
-import { readDate, readIsoDate, type ReadDates } from './dates.js';
+import { readDate, readDuration, readIsoDate, ZONE, type ReadDates } from './dates.js';
+import {
+    codeOf,
+    formatDateSerial,
+    formatDateText,
+    formatElapsed,
+    formatNumber,
+    generalText,
+    isoOfSerial,
+    localeFor,
+} from './displayText.js';
 import type { NumberFormats } from './numberFormats.js';
-import type { ReadRow, ReadValue } from './types.js';
+import type { ReadCell, ReadFields, ReadRow, ReadValue } from './types.js';
 import { XmlParser } from './xml.js';
 
 /** Days between the 1900 epoch and the 1904 one a Macintosh workbook uses. */
@@ -26,10 +36,15 @@ export interface RawCell {
     type: string | undefined;
     /** The `s`: which entry of `cellXfs` says how it is shown. */
     style: number | undefined;
-    /** The text of `<v>`, or of the `<is>` a cell carries its own string in. */
+    /** The text of `<v>`. */
     value: string | undefined;
     /** The expression of `<f>`, without the `=` a sheet does not store. */
     formula: string | undefined;
+    /**
+     * The text of the `<is>` a cell carries its own string in, its runs
+     * joined. Left out of a `RawCell` built by hand, where `value` holds it.
+     */
+    inline?: string | undefined;
 }
 
 /** What a cell is read against: everything the worksheet itself does not say. */
@@ -39,6 +54,11 @@ export interface CellContext {
     date1904: boolean;
     /** What a date is built as; see `ReadDates`. */
     dates: ReadDates;
+    /**
+     * The language the text of a cell is shown in, for `w`: `es` or an `es-…`
+     * for Spanish, anything else for English. Left out, a date is shown in ISO.
+     */
+    lang?: string | undefined;
 }
 
 /** `B12` as the coordinates it names, counting columns from 0 and rows from 1. */
@@ -81,12 +101,17 @@ function dateOf(serial: number, context: CellContext): ReadValue {
  * without anyone saying so.
  */
 export function cellValue(raw: RawCell, context: CellContext): ReadValue {
+    if (raw.type === 'inlineStr' && raw.inline !== undefined) return raw.inline;
     if (raw.value === undefined) return null;
     switch (raw.type) {
         case undefined:
         case 'n': {
             const value = numberOf(raw);
-            return context.formats.isDate(raw.style) ? dateOf(value, context) : value;
+            const kind = context.formats.kind(raw.style);
+            // A length of time is a number of days, the same in either epoch:
+            // thirty hours are thirty hours whatever day the workbook starts on.
+            if (kind === 'elapsed') return readDuration(value, context.dates);
+            return kind === 'date' ? dateOf(value, context) : value;
         }
         case 's': {
             const index = numberOf(raw);
@@ -139,6 +164,93 @@ export function styledCell(raw: RawCell, context: CellContext): StyledCell {
 }
 
 /**
+ * The text a cell shows — its `w`. See `displayText.ts` for how close that
+ * comes to what the application showed, and why it is never left out.
+ *
+ * A date is the one value that depends on whether a language was given: with
+ * one, it is shown under its own code, in that language; without one, in ISO.
+ * A length of time is shown under its code either way, since `30:00` says the
+ * same thing in every language.
+ */
+export function cellText(raw: RawCell, context: CellContext): string {
+    const locale = localeFor(context.lang);
+    switch (raw.type) {
+        case undefined:
+        case 'n': {
+            if (raw.value === undefined) return '';
+            const value = numberOf(raw);
+            const numFmt = context.formats.forStyle(raw.style);
+            const kind = context.formats.kind(raw.style);
+            if (kind === 'elapsed') return formatElapsed(value, codeOf(numFmt, locale), locale);
+            if (kind === 'date') {
+                const serial = context.date1904 ? value + DAYS_1904_TO_1900 : value;
+                return context.lang === undefined
+                    ? isoOfSerial(serial)
+                    : formatDateSerial(serial, codeOf(numFmt, locale), locale);
+            }
+            const formatted =
+                numFmt === undefined ? undefined : formatNumber(value, codeOf(numFmt, locale), locale);
+            return formatted ?? generalText(value, locale);
+        }
+        case 'b':
+            if (raw.value === undefined) return '';
+            return raw.value === '1' ? locale.true : locale.false;
+        case 'd': {
+            if (raw.value === undefined) return '';
+            const wall = raw.value.replace(ZONE, '');
+            if (context.lang === undefined) return wall;
+            // A date written out under a format that is not a date one is
+            // still a date, and is shown as the language's short date.
+            const code =
+                context.formats.kind(raw.style) === 'date'
+                    ? codeOf(context.formats.forStyle(raw.style), locale)
+                    : locale.shortDate + (wall.includes('T') ? ' hh:mm:ss' : '');
+            return formatDateText(wall, code, locale);
+        }
+        default: {
+            const value = cellValue(raw, context);
+            return value === null ? '' : String(value);
+        }
+    }
+}
+
+/**
+ * A cell as the fields a mode asked for — see `ReadCell`.
+ *
+ * A field the cell has nothing for is left out rather than set to
+ * `undefined`: a cell with no formula has no `f`, as a cell of the writer's
+ * would not. The one exception is `w`, which is always there when it was
+ * asked for, and `v`, which is `null` for a cell that holds nothing.
+ */
+export function readCell(raw: RawCell, context: CellContext, fields: ReadFields): Partial<ReadCell> {
+    const cell: Partial<ReadCell> = {};
+    if (fields.v !== false) cell.v = cellValue(raw, context);
+    if (fields.s) {
+        const numFmt = context.formats.forStyle(raw.style);
+        if (numFmt !== undefined) cell.s = { numFmt };
+    }
+    if (fields.f && raw.formula !== undefined) cell.f = raw.formula;
+    if (fields.t) {
+        const type: CellType | undefined =
+            raw.type === 'e' ? 'e' : raw.type === 'str' ? 'str' : undefined;
+        if (type !== undefined) cell.t = type;
+    }
+    if (fields.w) cell.w = cellText(raw, context);
+    if (fields.kind) {
+        if (raw.type === 'd') cell.kind = 'date';
+        else if ((raw.type === undefined || raw.type === 'n') && raw.value !== undefined) {
+            cell.kind = context.formats.kind(raw.style);
+        }
+    }
+    if (fields._t && raw.type !== undefined) cell._t = raw.type;
+    if (fields._s && raw.style !== undefined) cell._s = raw.style;
+    if (fields._v && raw.value !== undefined) cell._v = raw.value;
+    if (fields._f && raw.formula !== undefined) cell._f = raw.formula;
+    if (fields._is && raw.inline !== undefined) cell._is = raw.inline;
+    return cell;
+}
+
+/**
  * The rows of a worksheet, as the chunks of it go by.
  *
  * `saxes` calls back while a chunk is being written and a generator cannot
@@ -159,7 +271,7 @@ export async function* readRows<C>(
     let column = 0;
     let raw: RawCell | undefined;
     /** Where the text arriving now belongs, if anywhere. */
-    let target: 'value' | 'formula' | undefined;
+    let target: 'value' | 'inline' | 'formula' | undefined;
 
     const parser = new XmlParser(
         {
@@ -196,12 +308,20 @@ export async function* readRows<C>(
                         break;
                     }
                     case 'v':
+                        if (raw) {
+                            raw.value ??= '';
+                            target = 'value';
+                        }
+                        break;
                     case 't':
+                        // A `<t>` in a sheet is the text of an `<is>`, which
+                        // is kept apart from `<v>`: they are two fields of
+                        // the file, `_is` and `_v`.
                         if (raw) {
                             // `??=` and not `=`: the runs of an `<is>` are
                             // several `<t>` of one value, and they join.
-                            raw.value ??= '';
-                            target = 'value';
+                            raw.inline ??= '';
+                            target = 'inline';
                         }
                         break;
                     case 'f':
@@ -215,6 +335,7 @@ export async function* readRows<C>(
             text(text) {
                 if (!raw || target === undefined) return;
                 if (target === 'value') raw.value += text;
+                else if (target === 'inline') raw.inline += text;
                 else raw.formula += text;
             },
             close(name) {

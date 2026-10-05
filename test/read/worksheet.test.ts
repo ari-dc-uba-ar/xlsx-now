@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { NO_FORMATS, readNumberFormats } from '../../src/core/read/numberFormats.js';
 import type { ReadRow, ReadValue } from '../../src/core/read/types.js';
 import {
+    cellText,
     cellValue,
     parseCellReference,
+    readCell,
     readRows,
     styledCell,
     type CellContext,
@@ -300,5 +302,166 @@ describe('readRows', () => {
 
     it('refuses a part that does not parse', async () => {
         await assert.rejects(values('<row r="1"><c><v>1</v></row>'));
+    });
+});
+
+describe('cellValue: a length of time', () => {
+    const ctx = (dates: CellContext['dates']): CellContext =>
+        context({ formats: readNumberFormats(stylesOf(['[h]:mm', 46])), dates });
+
+    it('is not a date, under a declared code or the built-in one', () => {
+        assert.equal(cellValue(raw({ value: '1.25', style: 0 }), ctx('isoString')), 'PT30H');
+        assert.equal(cellValue(raw({ value: '1.25', style: 1 }), ctx('isoString')), 'PT30H');
+        assert.equal(cellValue(raw({ value: '1.25', style: 0 }), ctx('localDate')), 1.25);
+        assert.equal(cellValue(raw({ value: '1.25', style: 0 }), ctx('serial')), 1.25);
+        assert.equal(String(cellValue(raw({ value: '1.25', style: 0 }), ctx('temporal'))), 'PT30H');
+    });
+
+    it('is the same length in a workbook that counts from 1904', () => {
+        const in1904 = { ...ctx('isoString'), date1904: true };
+        assert.equal(cellValue(raw({ value: '1.25', style: 0 }), in1904), 'PT30H');
+    });
+});
+
+describe('cellValue: the serial mode', () => {
+    it('is the number under a date format, counted from 1900 whatever the workbook says', () => {
+        const ctx = context({ formats: readNumberFormats(stylesOf([14])), dates: 'serial' });
+        assert.equal(cellValue(raw({ value: '45306', style: 0 }), ctx), 45306);
+        assert.equal(cellValue(raw({ value: '43844', style: 0 }), { ...ctx, date1904: true }), 45306);
+    });
+});
+
+describe('cellText', () => {
+    const es = (overrides: Partial<CellContext> = {}): CellContext => context({ lang: 'es', ...overrides });
+
+    it('is the text of a string, an error or the string a formula left', () => {
+        assert.equal(cellText(raw({ type: 's', value: '0' }), es({ sharedStrings: ['hola'] })), 'hola');
+        assert.equal(cellText(raw({ type: 'inlineStr', inline: 'hola' }), es()), 'hola');
+        assert.equal(cellText(raw({ type: 'e', value: '#DIV/0!' }), es()), '#DIV/0!');
+        assert.equal(cellText(raw({ type: 'str', value: 'x', formula: 'A1' }), es()), 'x');
+    });
+
+    it('is the word of the language for a boolean', () => {
+        assert.equal(cellText(raw({ type: 'b', value: '1' }), es()), 'VERDADERO');
+        assert.equal(cellText(raw({ type: 'b', value: '0' }), PLAIN), 'FALSE');
+    });
+
+    it('is a number under its format, or as it is under General', () => {
+        const formats = readNumberFormats(stylesOf(['#,##0.00', 4]));
+        assert.equal(cellText(raw({ value: '1234.5', style: 0 }), es({ formats })), '1.234,50');
+        assert.equal(cellText(raw({ value: '1234.5', style: 1 }), es({ formats })), '1.234,50');
+        assert.equal(cellText(raw({ value: '1234.5' }), es()), '1234,5');
+        assert.equal(cellText(raw({ value: '1234.5', style: 0 }), context({ formats })), '1,234.50');
+    });
+
+    it('is a number as it is under a format it does not take apart', () => {
+        const formats = readNumberFormats(stylesOf(['# ?/?']));
+        assert.equal(cellText(raw({ value: '1.5', style: 0 }), es({ formats })), '1,5');
+    });
+
+    it('is a date under its code in the language given, and in ISO with no language', () => {
+        const formats = readNumberFormats(stylesOf(['yyyy-mm-dd hh:mm', 14, 'd-mmm-yy']));
+        const when = raw({ value: '44560.43055555556', style: 0 });
+        assert.equal(cellText(when, es({ formats })), '2021-12-30 10:20');
+        assert.equal(cellText(when, context({ formats })), '2021-12-30T10:20:00');
+        assert.equal(cellText(raw({ value: '45306', style: 1 }), es({ formats })), '15/01/2024');
+        assert.equal(cellText(raw({ value: '45306', style: 1 }), context({ formats, lang: 'en' })), '01/15/2024');
+        assert.equal(cellText(raw({ value: '45306', style: 2 }), es({ formats })), '15-ene-24');
+        assert.equal(cellText(raw({ value: '45306', style: 2 }), context({ formats })), '2024-01-15');
+    });
+
+    it('counts a date from 1904 when the workbook does', () => {
+        const formats = readNumberFormats(stylesOf([14]));
+        assert.equal(cellText(raw({ value: '43844', style: 0 }), es({ formats, date1904: true })), '15/01/2024');
+    });
+
+    it('is a length of time under its code, with a language or without one', () => {
+        const formats = readNumberFormats(stylesOf(['[h]:mm']));
+        assert.equal(cellText(raw({ value: '1.25', style: 0 }), es({ formats })), '30:00');
+        assert.equal(cellText(raw({ value: '1.25', style: 0 }), context({ formats })), '30:00');
+    });
+
+    it('is a date written out in text under its code, or the text itself with no language', () => {
+        const formats = readNumberFormats(stylesOf(['dd/mm/yyyy']));
+        assert.equal(cellText(raw({ type: 'd', value: '1850-06-20', style: 0 }), es({ formats })), '20/06/1850');
+        assert.equal(cellText(raw({ type: 'd', value: '1850-06-20' }), es()), '20/06/1850');
+        assert.equal(cellText(raw({ type: 'd', value: '1850-06-20T10:30:00Z' }), PLAIN), '1850-06-20T10:30:00');
+    });
+
+    it('is empty for a cell that holds nothing', () => {
+        assert.equal(cellText(raw({ style: 1 }), es()), '');
+        assert.equal(cellText(raw({ type: 'b' }), es()), '');
+    });
+});
+
+describe('readCell', () => {
+    const ctx = context({
+        sharedStrings: ['uno', 'dos'],
+        formats: readNumberFormats(stylesOf(['#,##0.00', 14])),
+        lang: 'es',
+    });
+
+    it('is the value alone when nothing else was asked for', () => {
+        assert.deepEqual(readCell(raw({ value: '42' }), ctx, {}), { v: 42 });
+    });
+
+    it('carries the fields asked for, and leaves out the ones the cell has nothing for', () => {
+        const all = { s: true, f: true, t: true, w: true } as const;
+        assert.deepEqual(readCell(raw({ value: '1234.5', style: 0 }), ctx, all), {
+            v: 1234.5,
+            s: { numFmt: '#,##0.00' },
+            w: '1.234,50',
+        });
+        assert.deepEqual(readCell(raw({ type: 'str', value: 'x', formula: 'A1' }), ctx, all), {
+            v: 'x',
+            f: 'A1',
+            t: 'str',
+            w: 'x',
+        });
+    });
+
+    it('gives the file its own names, with nothing made of them', () => {
+        const fields = { v: false, _t: true, _s: true, _v: true, _f: true, _is: true } as const;
+        assert.deepEqual(readCell(raw({ type: 's', value: '1', style: 1 }), ctx, fields), {
+            _t: 's',
+            _s: 1,
+            _v: '1',
+        });
+        assert.deepEqual(readCell(raw({ type: 'inlineStr', inline: 'hola' }), ctx, fields), {
+            _t: 'inlineStr',
+            _is: 'hola',
+        });
+        assert.deepEqual(readCell(raw({ value: '3', formula: '1+2' }), ctx, fields), { _v: '3', _f: '1+2' });
+    });
+
+    it('can say a cell both ways at once', () => {
+        assert.deepEqual(readCell(raw({ type: 's', value: '1' }), ctx, { _v: true }), { v: 'dos', _v: '1' });
+    });
+
+    it('says what kind of number a cell holds, by its format', () => {
+        const kinds = context({ formats: readNumberFormats(stylesOf(['0.00', 14, '[h]:mm'])), dates: 'serial' });
+        assert.deepEqual(readCell(raw({ value: '92', style: 0 }), kinds, { kind: true }), { v: 92, kind: 'number' });
+        assert.deepEqual(readCell(raw({ value: '92', style: 1 }), kinds, { kind: true }), { v: 92, kind: 'date' });
+        assert.deepEqual(readCell(raw({ value: '92', style: 2 }), kinds, { kind: true }), { v: 92, kind: 'elapsed' });
+        assert.deepEqual(readCell(raw({ value: '92' }), kinds, { kind: true }), { v: 92, kind: 'number' });
+        assert.deepEqual(readCell(raw({ type: 'd', value: '1850-06-20' }), kinds, { kind: true }), { v: -18091, kind: 'date' });
+        assert.deepEqual(readCell(raw({ type: 'inlineStr', inline: 'x' }), kinds, { kind: true }), { v: 'x' });
+        assert.deepEqual(readCell(raw({ style: 1 }), kinds, { kind: true }), { v: null });
+    });
+
+    it('always has a w when it was asked for, even for a cell that holds nothing', () => {
+        assert.deepEqual(readCell(raw({ style: 0 }), ctx, { w: true }), { v: null, w: '' });
+    });
+});
+
+describe('readRows: the string a cell carries itself', () => {
+    it('keeps the text of an <is> apart from the <v> the cell does not have', async () => {
+        const rows = await rowsOf(
+            '<row><c t="inlineStr"><is><r><t>en </t></r><r><t>partes</t></r></is></c></row>',
+            (cell) => cell,
+        );
+        const cell = rows[0]?.cells[0];
+        assert.equal(cell?.inline, 'en partes');
+        assert.equal(cell?.value, undefined);
     });
 });

@@ -7,6 +7,7 @@ import { Temporal } from 'temporal-polyfill';
 import ExcelJS from 'exceljs';
 import { createXlsxStream, type CreateXlsxStreamOptions } from '../../src/core/createXlsxStream.js';
 import { openXlsx, readXlsx } from '../../src/core/read/readXlsx.js';
+import { READ_CELLS, READ_RAW, READ_VALUES } from '../../src/core/read/types.js';
 import type { ReadDates } from '../../src/core/read/dates.js';
 import type { ReadValue } from '../../src/core/read/types.js';
 import type { StyledCell } from '../../src/core/types.js';
@@ -239,7 +240,7 @@ describe('readXlsx: files built by hand', () => {
 
     it('reads a sheet with nothing in it', async () => {
         const [sheet] = await readXlsx(xlsxPackage({ sheets: { Vacía: '' } }));
-        assert.deepEqual(sheet, { name: 'Vacía', cells: [], maxCol: 0, maxRow: 0 });
+        assert.deepEqual(sheet, { name: 'Vacía', cells: [], maxCol: 0, maxRow: 0, date1904: false });
     });
 
     it('reads a file whose elements carry a namespace prefix', async () => {
@@ -375,5 +376,92 @@ describe('openXlsx', () => {
                 '<workbook xmlns:r="x"><sheets><sheet name="H" r:id="rIdPerdida"/></sheets></workbook>',
         });
         await assert.rejects(readXlsx(bytes), /rIdPerdida/);
+    });
+});
+
+describe('readXlsx: the fields of a cell', () => {
+    it('reads the fields a mode names, and only those', async () => {
+        const bytes = await written({
+            rows: [[{ v: 1234.5, s: { numFmt: '#,##0.00' } }, Temporal.PlainDate.from('2024-01-15'), 'hola']],
+        });
+        const [sheet] = await readXlsx(bytes, { mode: { w: true, s: true }, lang: 'es' });
+        const [number, date, text] = sheet?.cells[0] ?? [];
+        assert.deepEqual(number, { v: 1234.5, s: { numFmt: '#,##0.00' }, w: '1.234,50' });
+        assert.equal(date?.w, '15/01/2024');
+        assert.deepEqual(text, { v: 'hola', w: 'hola' });
+    });
+
+    it('gives the file its own names with READ_RAW', async () => {
+        const bytes = xlsxPackage({
+            sheets: { H: '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" s="0"><v>45306</v></c></row>' },
+            sharedStrings: '<si><t>uno</t></si>',
+            styles: stylesOf([14]),
+        });
+        const [sheet] = await readXlsx(bytes, { mode: READ_RAW });
+        assert.deepEqual(sheet?.cells[0], [{ _t: 's', _v: '0' }, { _s: 0, _v: '45306' }]);
+    });
+
+    it('reads the dates as their serials with dates: serial', async () => {
+        const bytes = xlsxPackage({
+            sheets: { H: '<row r="1"><c r="A1" s="0"><v>43844</v></c></row>' },
+            styles: stylesOf([14]),
+            workbookPr: 'date1904="1"',
+        });
+        const [sheet] = await readXlsx(bytes, { dates: 'serial', mode: { _v: true } });
+        // The value is counted from 1900 already; `_v` is what the file says.
+        assert.deepEqual(sheet?.cells[0]?.[0], { v: 45306, _v: '43844' });
+        assert.equal(sheet?.date1904, true);
+        const workbook = await openXlsx(bytes);
+        assert.equal(workbook.date1904, true);
+    });
+
+    it('takes the named modes as constants too', async () => {
+        const bytes = await written({ rows: [[1, 'a']] });
+        assert.deepEqual((await readXlsx(bytes, { mode: READ_VALUES }))[0]?.cells, [[1, 'a']]);
+        assert.deepEqual((await readXlsx(bytes, { mode: READ_CELLS }))[0]?.cells, [[{ v: 1 }, { v: 'a' }]]);
+    });
+
+    it('refuses a mode that is none of them', async () => {
+        const bytes = await written({ rows: [[1]] });
+        await assert.rejects(readXlsx(bytes, { mode: 'raw' as 'values' }), /"raw" is not how a cell can be read/);
+    });
+
+    it('says once that the text of a cell was asked for with no language', async () => {
+        const bytes = await written({ rows: [[Temporal.PlainDate.from('2024-01-15')]] });
+        const warnings: unknown[] = [];
+        const warn = console.warn;
+        console.warn = (message: unknown) => warnings.push(message);
+        try {
+            const [sheet] = await readXlsx(bytes, { mode: { w: true } });
+            await readXlsx(bytes, { mode: { w: true } });
+            assert.equal(sheet?.cells[0]?.[0]?.w, '2024-01-15');
+        } finally {
+            console.warn = warn;
+        }
+        assert.equal(warnings.length, 1);
+        assert.match(String(warnings[0]), /with no lang/);
+    });
+});
+
+describe('readXlsx: a length of time', () => {
+    it('reads back a Duration the writer wrote, and writes it again the same', async () => {
+        const rows = [[Temporal.Duration.from('PT30H'), Temporal.Duration.from({ minutes: 90 })]];
+        const once = await readXlsx(await written({ rows }), { mode: 'cells' });
+        const [long, short] = once[0]?.cells[0] ?? [];
+        assert.ok(long?.v instanceof Temporal.Duration);
+        assert.equal(String(long.v), 'PT30H');
+        assert.equal(String(short?.v), 'PT1H30M');
+        assert.deepEqual(long.s, { numFmt: '[h]:mm:ss' });
+        const again = await readXlsx(await written({ rows: once[0]?.cells ?? [] }), { mode: 'cells' });
+        assert.deepEqual(
+            again[0]?.cells[0]?.map((cell) => String(cell?.v)),
+            once[0]?.cells[0]?.map((cell) => String(cell?.v)),
+        );
+    });
+
+    it('reads it as the text the sheet shows', async () => {
+        const bytes = await written({ rows: [[Temporal.Duration.from('PT30H')]] });
+        const [sheet] = await readXlsx(bytes, { mode: { w: true }, dates: 'isoString', lang: 'es' });
+        assert.deepEqual(sheet?.cells[0]?.[0], { v: 'PT30H', w: '30:00:00' });
     });
 });

@@ -8,7 +8,7 @@ import { open, type FileHandle } from 'node:fs/promises';
 import { createXlsxStream, type CreateXlsxStreamOptions } from '../core/createXlsxStream.js';
 import type { RandomAccess } from '../core/read/randomAccess.js';
 import { openXlsx, type ReadOptions, type XlsxReader } from '../core/read/readXlsx.js';
-import type { ReadMode, ReadModes, SheetData } from '../core/read/types.js';
+import type { CellOf, ReadMode, SheetData } from '../core/read/types.js';
 
 /**
  * A file as a Web `WritableStream<Uint8Array>`, to close a `pipeTo`.
@@ -138,15 +138,15 @@ export interface XlsxFileReader<C> extends XlsxReader<C> {
  * }
  * ```
  */
-export async function openXlsxFile<M extends ReadMode = 'values'>(
+export async function openXlsxFile<const M extends ReadMode = 'values'>(
     path: string,
     options: ReadOptions<M> = {},
-): Promise<XlsxFileReader<ReadModes[M]>> {
+): Promise<XlsxFileReader<CellOf<M>>> {
     const file = await open(path);
     try {
         const { size } = await file.stat();
         const reader = await openXlsx(fileAccess(file, size), options);
-        return { sheets: reader.sheets, close: () => file.close() };
+        return { sheets: reader.sheets, date1904: reader.date1904, close: () => file.close() };
     } catch (err) {
         // The handle is this function's until it is handed over, and a
         // package that fails to open would leave it behind.
@@ -156,13 +156,13 @@ export async function openXlsxFile<M extends ReadMode = 'values'>(
 }
 
 /** Every sheet of a workbook file, read whole. */
-export async function readXlsxFile<M extends ReadMode = 'values'>(
+export async function readXlsxFile<const M extends ReadMode = 'values'>(
     path: string,
     options: ReadOptions<M> = {},
-): Promise<SheetData<ReadModes[M]>[]> {
+): Promise<SheetData<CellOf<M>>[]> {
     const workbook = await openXlsxFile(path, options);
     try {
-        const sheets: SheetData<ReadModes[M]>[] = [];
+        const sheets: SheetData<CellOf<M>>[] = [];
         for (const sheet of workbook.sheets) sheets.push(await sheet.read());
         return sheets;
     } finally {

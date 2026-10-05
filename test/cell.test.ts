@@ -225,10 +225,15 @@ describe('fromExcelSerial', () => {
         assert.equal(date.getHours(), 12);
     });
 
-    it('refuses the day that never was, and anything below zero', () => {
+    it('refuses the day that never was', () => {
         assert.throws(() => fromExcelSerial(60), RangeError);
         assert.throws(() => fromExcelSerial(60.5), RangeError);
-        assert.throws(() => fromExcelSerial(-1), RangeError);
+        assert.throws(() => fromExcelSerial(Number.NaN), RangeError);
+    });
+
+    it('reads a serial below zero as the count carried on backwards', () => {
+        const date = fromExcelSerial(-1);
+        assert.deepEqual([date.getFullYear(), date.getMonth(), date.getDate()], [1899, 11, 30]);
     });
 });
 

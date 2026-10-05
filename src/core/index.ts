@@ -26,6 +26,7 @@ export {
 } from './cell.js';
 export {
     temporalApi,
+    type Duration,
     type PlainDate,
     type PlainDateTime,
     type PlainTime,
@@ -48,9 +49,11 @@ export {
 } from './styles.js';
 export { DEFAULT_COMPRESSION_LEVEL, ZipWriter, type CompressionLevel } from './zip.js';
 export {
+    DEFAULT_DURATION_FORMAT,
     bigintValue,
     dateValue,
     defaultTypes,
+    durationValue,
     plainDateTimeValue,
     plainDateValue,
     plainTimeValue,
@@ -84,5 +87,19 @@ export {
     type XlsxSource,
 } from './read/readXlsx.js';
 export { bytesAccess, type RandomAccess } from './read/randomAccess.js';
-export { readDate, type ReadDates } from './read/dates.js';
-export type { ReadMode, ReadModes, ReadRow, ReadValue, SheetData } from './read/types.js';
+export { isoDuration, readDate, readDuration, type ReadDates } from './read/dates.js';
+export { READ_CELLS, READ_RAW, READ_VALUES } from './read/types.js';
+export type { FormatKind } from './read/numberFormats.js';
+export type {
+    CellOf,
+    PickedCell,
+    ReadCell,
+    ReadField,
+    ReadFields,
+    ReadMode,
+    ReadModes,
+    ReadRow,
+    ReadStyle,
+    ReadValue,
+    SheetData,
+} from './read/types.js';

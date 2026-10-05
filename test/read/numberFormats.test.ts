@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { isDateFormat, readNumberFormats } from '../../src/core/read/numberFormats.js';
+import { formatKind, isDateFormat, readNumberFormats } from '../../src/core/read/numberFormats.js';
 import { stylesOf } from '../helpers/package.js';
 
 describe('isDateFormat', () => {
@@ -19,9 +19,15 @@ describe('isDateFormat', () => {
         assert.ok(!isDateFormat('[Red]-0.00;[Blue]0.00'));
     });
 
-    it('reads elapsed time, which is the one value written in brackets', () => {
-        assert.ok(isDateFormat('[h]:mm:ss'));
-        assert.ok(isDateFormat('[mm]:ss'));
+    it('reads elapsed time, which is the one value written in brackets, as a length and not a date', () => {
+        // `1.25` under `[h]:mm` is thirty hours, not the first of January of
+        // 1900 at six in the morning.
+        for (const code of ['[h]:mm:ss', '[mm]:ss', '[ss]', '[hh]:mm']) {
+            assert.equal(formatKind(code), 'elapsed', code);
+            assert.ok(!isDateFormat(code), `${code} was read as a date`);
+        }
+        assert.equal(formatKind('hh:mm'), 'date');
+        assert.equal(formatKind('0.00'), 'number');
     });
 
     it('still finds the date after a literal it skipped', () => {
@@ -52,7 +58,12 @@ describe('readNumberFormats', () => {
         const formats = readNumberFormats(stylesOf([14, 22, 46, 9, 0, 30]));
         assert.deepEqual(
             [0, 1, 2, 3, 4, 5].map((style) => formats.isDate(style)),
-            [true, true, true, false, false, true],
+            [true, true, false, false, false, true],
+        );
+        // 46 is `[h]:mm:ss`: a length of time.
+        assert.deepEqual(
+            [0, 1, 2, 3, 4, 5].map((style) => formats.kind(style)),
+            ['date', 'date', 'elapsed', 'number', 'number', 'date'],
         );
     });
 

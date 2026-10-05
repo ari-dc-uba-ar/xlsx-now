@@ -8,7 +8,7 @@
 // are the one place that needs to name `Temporal.PlainDate` in TypeScript.
 import assert from 'node:assert/strict';
 import { Temporal } from 'temporal-polyfill';
-import { readDate, readDates } from '../../src/core/read/dates.js';
+import { isoDuration, readDate, readDates, readDuration, readIsoDate } from '../../src/core/read/dates.js';
 
 /** 15/01/2024, and the same day at half past twelve. */
 const DAY = 45306;
@@ -119,7 +119,67 @@ describe('readDate: the two Dates', () => {
     it('refuses the day the calendar does not have, whichever mode asked', () => {
         for (const mode of ['temporal', 'utcDate', 'localDate', 'isoString'] as const) {
             assert.throws(() => readDate(60, mode), RangeError, mode);
-            assert.throws(() => readDate(-1, mode), RangeError, mode);
+        }
+    });
+
+    it('reads a serial below zero as the day it counts back to, whichever mode asked', () => {
+        assert.equal(String(readDate(-18091, 'temporal')), '1850-06-20');
+        assert.equal(readDate(-18091, 'isoString'), '1850-06-20');
+        assert.equal(readDate(-0.5, 'isoString'), '1899-12-30T12:00:00');
+        assert.equal((readDate(-18091, 'utcDate') as Date).toISOString(), '1850-06-20T00:00:00.000Z');
+        const local = readDate(-18091, 'localDate') as Date;
+        assert.deepEqual([local.getFullYear(), local.getMonth(), local.getDate()], [1850, 5, 20]);
+    });
+});
+
+describe('the serial mode', () => {
+    it('gives the number back as it is, which is what the sheet stores', () => {
+        assert.equal(readDate(DAY, 'serial'), DAY);
+        assert.equal(readDate(NOON_AND_A_HALF, 'serial'), NOON_AND_A_HALF);
+        assert.equal(readDate(TIME, 'serial'), TIME);
+        // The day Excel has and the calendar does not has a number all the same.
+        assert.equal(readDate(60, 'serial'), 60);
+    });
+
+    it('numbers a date written out in text, below zero for a day no serial reaches', () => {
+        assert.equal(readIsoDate('2024-01-15', 'serial'), DAY);
+        assert.equal(readIsoDate('2024-01-15T12:00:00Z', 'serial'), NOON_AND_A_HALF);
+        assert.equal(readIsoDate('1900-03-01', 'serial'), 61);
+        assert.equal(readIsoDate('1900-01-01', 'serial'), 1);
+        assert.equal(readIsoDate('1899-12-31', 'serial'), 0);
+        assert.equal(readIsoDate('1899-12-30', 'serial'), -1);
+        // 18091 days before 31/12/1899.
+        assert.equal(readIsoDate('1850-06-20', 'serial'), -18091);
+    });
+
+    it('refuses a date written out in text that is not one', () => {
+        assert.throws(() => readIsoDate('ayer', 'serial'), /not a date/);
+    });
+});
+
+describe('isoDuration', () => {
+    it('is a length in days as an ISO duration, counted in hours', () => {
+        assert.equal(isoDuration(1.25), 'PT30H');
+        assert.equal(isoDuration(0.5 / 24), 'PT30M');
+        assert.equal(isoDuration(1 + 1 / 24 + 1 / 1440 + 1.5 / 86400), 'PT25H1M1.5S');
+        assert.equal(isoDuration(0), 'PT0S');
+        assert.equal(isoDuration(-1.25), '-PT30H');
+    });
+
+    it('rounds to the millisecond, so a fraction of a day does not come back a hair short', () => {
+        assert.equal(isoDuration(0.5 / 24 + 0.001 / 86400), 'PT30M0.001S');
+        assert.equal(isoDuration(1 / 3), 'PT8H');
+    });
+});
+
+describe('readDuration', () => {
+    it('is a Duration, its ISO text, or the number, and never a date', () => {
+        const duration = readDuration(1.25, 'temporal');
+        assert.ok(duration instanceof Temporal.Duration);
+        assert.equal(duration.hours, 30);
+        assert.equal(readDuration(1.25, 'isoString'), 'PT30H');
+        for (const mode of ['utcDate', 'localDate', 'serial'] as const) {
+            assert.equal(readDuration(1.25, mode), 1.25, mode);
         }
     });
 });

@@ -15,7 +15,13 @@
 // class of the caller's own goes in the same way and costs the same.
 import { excelSerial, serialKind, type DateKind, type WriteDates } from './cell.js';
 import { DEFAULT_DATE_FORMATS, type DateFormats } from './styles.js';
-import { temporalApi, type PlainDate, type PlainDateTime, type PlainTime } from './temporal.js';
+import {
+    temporalApi,
+    type Duration,
+    type PlainDate,
+    type PlainDateTime,
+    type PlainTime,
+} from './temporal.js';
 import type { CellType } from './types.js';
 
 /**
@@ -202,6 +208,40 @@ export function plainTimeValue(value: PlainTime, context: ConvertContext): Conve
     );
 }
 
+/** The format a length of time is shown in when the cell does not say one. */
+export const DEFAULT_DURATION_FORMAT = '[h]:mm:ss';
+
+/**
+ * A `Temporal.Duration` as a cell holds it: the number of days it lasts, under
+ * an elapsed format — `PT30H` is `1.25`, shown as `30:00:00`.
+ *
+ * Only the fields that are a fixed length are taken. A year, a month or a week
+ * in a duration is a calendar length — how many days a month is depends on
+ * which month — so a duration that has one is refused rather than given a
+ * length it does not have.
+ */
+export function durationValue(value: Duration): ConvertedValue {
+    if (value.years || value.months || value.weeks) {
+        throw new RangeError(
+            `${value.toString()} cannot be written to a sheet: years, months and weeks are not a fixed number of days.`,
+        );
+    }
+    const milliseconds =
+        value.days * 86400000 +
+        value.hours * 3600000 +
+        value.minutes * 60000 +
+        value.seconds * 1000 +
+        value.milliseconds +
+        value.microseconds / 1000 +
+        value.nanoseconds / 1000000;
+    return {
+        v: milliseconds / 86400000,
+        numFmt: DEFAULT_DURATION_FORMAT,
+        // `30:00:00`: as many characters as the hours take, and six more.
+        width: String(Math.floor(Math.abs(milliseconds) / 3600000)).length + 6 + (milliseconds < 0 ? 1 : 0),
+    };
+}
+
 /**
  * The largest whole number a sheet can hold, as a `bigint`. A cell stores a
  * double, so 15 to 16 digits is all the precision there is: past this, the
@@ -239,7 +279,7 @@ export function urlValue(value: URL): ConvertedValue {
  * has no one right way to be written down, so it is refused by name rather
  * than written out as whatever `String()` makes of it.
  *
- * The three `Temporal` classes are among them where the environment has a
+ * The four `Temporal` classes are among them where the environment has a
  * `Temporal` — which is settled by the time this module loads, and so is this
  * map. See `temporalApi`.
  */
@@ -251,12 +291,13 @@ export const defaultTypes: TypeMap = withTemporal(
     ]),
 );
 
-/** The three `Temporal` classes added to a map, where there are three to add. */
+/** The four `Temporal` classes added to a map, where there are four to add. */
 function withTemporal(types: Map<TypeKey, RegisteredHandler>): TypeMap {
     if (temporalApi === undefined) return types;
     types.set(temporalApi.PlainDate, { convert: plainDateValue });
     types.set(temporalApi.PlainDateTime, { convert: plainDateTimeValue });
     types.set(temporalApi.PlainTime, { convert: plainTimeValue });
+    types.set(temporalApi.Duration, { convert: durationValue });
     return types;
 }
 
