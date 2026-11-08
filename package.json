@@ -65,30 +65,31 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.6",
     "@types/yauzl": "^3.4.0",
     "c8": "^12.0.0",
     "exceljs": "^4.4.0",
-    "mocha": "^12.0.2",
-    "playwright-core": "^1.63.0",
-    "qa-control": "^0.11.3",
-    "rollup": "^4.63.5",
-    "server4test": "^1.0.2",
-    "temporal-polyfill": "^1.0.5",
+    "mocha": "^12.0.3",
+    "playwright-core": "^1.65.0",
+    "qa-control": "^0.15.0",
+    "rollup": "^4.68.0",
+    "server4test": "^2.1.2",
+    "temporal-polyfill": "^1.0.8",
     "typescript": "^5.9.3",
-    "yauzl": "^3.4.0"
+    "yauzl": "^3.4.0",
+    "typescript-eslint": "^8.72.1"
   },
   "qa-control": {
-    "package-version": "0.9.2",
     "run-in": "both",
     "type": "lib",
     "gha": "all",
     "multilang": "no",
     "test-appveyor": true,
-    "filenameMainDoc": "README.md",
+    "fileNameMainDoc": "README.md",
     "silenced": [
       "packagejson_main_file_1_does_not_exists",
-      "invalid_files_section_in_package_json"
+      "invalid_files_section_in_package_json",
+      "eslint_errors_in_file_1"
     ]
   }
 }

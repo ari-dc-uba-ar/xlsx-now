@@ -65,6 +65,16 @@ describe('parseCellReference', () => {
             assert.equal(parseCellReference(text), undefined, `${text} was read as a reference`);
         }
     });
+
+    it('reaches the last row and the last column of a sheet', () => {
+        assert.deepEqual(parseCellReference('XFD1048576'), { column: 16383, row: 1048576 });
+    });
+
+    it('is nothing past the last row or the last column of a sheet', () => {
+        for (const text of ['XFE1', 'ZZZZZZ1', 'A1048577', 'A2000000000']) {
+            assert.equal(parseCellReference(text), undefined, `${text} was read as a reference`);
+        }
+    });
 });
 
 describe('cellValue', () => {
@@ -298,6 +308,14 @@ describe('readRows', () => {
 
     it('refuses a cell whose reference is not one', async () => {
         await assert.rejects(values('<row r="1"><c r="hola"><v>1</v></c></row>'), /not a cell reference/);
+    });
+
+    it('refuses a cell past the last column of a sheet', async () => {
+        await assert.rejects(values('<row r="1"><c r="ZZZZZZ1"><v>1</v></c></row>'), /not a cell reference/);
+    });
+
+    it('refuses a row past the last row of a sheet', async () => {
+        await assert.rejects(values('<row r="2000000000"><c><v>1</v></c></row>'), /past the last row/);
     });
 
     it('refuses a part that does not parse', async () => {

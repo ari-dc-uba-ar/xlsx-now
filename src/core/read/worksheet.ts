@@ -30,6 +30,14 @@ import { XmlParser } from './xml.js';
 /** Days between the 1900 epoch and the 1904 one a Macintosh workbook uses. */
 const DAYS_1904_TO_1900 = 1462;
 
+/**
+ * The size of a sheet: 1048576 rows and 16384 columns (the last one is `XFD`).
+ * A file that names a cell past them is not a sheet, and believing it would
+ * have the reader make room for billions of rows or columns out of a few bytes.
+ */
+export const MAX_ROWS = 1_048_576;
+export const MAX_COLUMNS = 16_384;
+
 /** A cell as the file spells it, before anything has been made of it. */
 export interface RawCell {
     /** The `t`: what the cell says it holds. Absent means a number. */
@@ -61,15 +69,20 @@ export interface CellContext {
     lang?: string | undefined;
 }
 
-/** `B12` as the coordinates it names, counting columns from 0 and rows from 1. */
+/**
+ * `B12` as the coordinates it names, counting columns from 0 and rows from 1.
+ * A reference past the last row or column of a sheet names no cell.
+ */
 export function parseCellReference(
     reference: string,
 ): { column: number; row: number } | undefined {
     const match = /^([A-Za-z]+)([0-9]+)$/.exec(reference);
     if (!match) return undefined;
     const column = columnIndex(match[1] as string);
-    if (column === undefined) return undefined;
-    return { column, row: Number(match[2]) };
+    if (column === undefined || column >= MAX_COLUMNS) return undefined;
+    const row = Number(match[2]);
+    if (row > MAX_ROWS) return undefined;
+    return { column, row };
 }
 
 /** The number in a `<v>`, or a failure that names what was there instead. */
@@ -287,6 +300,9 @@ export async function* readRows<C>(
                         // it is simply the next one.
                         const declared = Number(attributes['r']);
                         rowIndex = Number.isInteger(declared) ? declared : rowIndex + 1;
+                        if (rowIndex > MAX_ROWS) {
+                            throw new Error(`The row ${rowIndex} is past the last row a sheet can have (${MAX_ROWS}).`);
+                        }
                         cells = [];
                         column = 0;
                         break;

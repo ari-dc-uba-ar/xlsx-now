@@ -153,4 +153,4 @@ vite.config.ts.timestamp-*
 local-*
 *-local.*
 
-.claude/settings.json
+.claude/

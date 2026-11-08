@@ -177,9 +177,23 @@ export async function* entryChunks(
         );
     }
     const start = await dataOffset(access, entry);
+    // An entry never comes out bigger than the size the directory declares for
+    // it. One that does is not a part of a package but a zip bomb: a few
+    // kilobytes that inflate into gigabytes. Counting as it goes stops it
+    // before it is all in memory.
+    let total = 0;
+    const counted = (chunk: Uint8Array): Uint8Array => {
+        total += chunk.length;
+        if (total > entry.uncompressedSize) {
+            throw new Error(
+                `The entry "${entry.name}" comes out bigger than the ${entry.uncompressedSize} bytes the archive declares for it.`,
+            );
+        }
+        return chunk;
+    };
     if (entry.method === METHOD_STORE) {
         for (let read = 0; read < entry.compressedSize; read += CHUNK_SIZE) {
-            yield await access.read(start + read, Math.min(CHUNK_SIZE, entry.compressedSize - read));
+            yield counted(await access.read(start + read, Math.min(CHUNK_SIZE, entry.compressedSize - read)));
         }
         return;
     }
@@ -196,7 +210,7 @@ export async function* entryChunks(
     for (let read = 0; read < entry.compressedSize; read += CHUNK_SIZE) {
         const length = Math.min(CHUNK_SIZE, entry.compressedSize - read);
         inflate.push(await access.read(start + read, length), read + length >= entry.compressedSize);
-        yield* inflated.splice(0);
+        yield* inflated.splice(0).map(counted);
     }
 }
 

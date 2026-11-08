@@ -116,6 +116,18 @@ describe('entryChunks', () => {
         const entry = (await readCentralDirectory(access)).get('a.txt')!;
         await assert.rejects(readEntry(access, entry), /local file header/);
     });
+
+    it('refuses a deflated entry that comes out bigger than the archive declares (a zip bomb)', async () => {
+        const access = bytesAccess(archive({ 'a.txt': COMPRESSIBLE }));
+        const entry = { ...(await readCentralDirectory(access)).get('a.txt')!, uncompressedSize: 10 };
+        await assert.rejects(readEntry(access, entry), /bigger than the 10 bytes/);
+    });
+
+    it('refuses a stored entry that comes out bigger than the archive declares', async () => {
+        const access = bytesAccess(archive({ 'a.txt': COMPRESSIBLE }, 0));
+        const entry = { ...(await readCentralDirectory(access)).get('a.txt')!, uncompressedSize: 10 };
+        await assert.rejects(readEntry(access, entry), /bigger than the 10 bytes/);
+    });
 });
 
 describe('entryChunks: what it hands out', () => {
