@@ -10,7 +10,7 @@
 // nothing to import from — `Temporal` is a global, TypeScript's own libraries
 // do not declare it yet, and a polyfill is a dependency this package does not
 // have and should not force. So the global is read where it is needed, and
-// checked before it is: a workbook opened with `dates: 'temporal'` in an
+// checked before it is: a workbook opened with `datesAs: 'temporal'` in an
 // environment with no `Temporal` fails at `openXlsx`, saying so, rather than
 // with a `TypeError` in the middle of a sheet.
 //
@@ -109,7 +109,7 @@ export function requireTemporal(): TemporalApi {
         throw new Error(
             'Dates are read as Temporal values and this environment has no Temporal.PlainDate: ' +
                 'run where there is one, install a polyfill, or say how dates should be built ' +
-                'with dates: "utcDate", "localDate" or "isoString".',
+                'with datesAs: "utcDate", "localDate" or "isoString".',
         );
     }
     return temporalApi;

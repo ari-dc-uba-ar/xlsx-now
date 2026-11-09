@@ -200,7 +200,7 @@ describe('the Node face', () => {
 
         it('takes an abort reason that is not an Error', async () => {
             const writable = createFileWritable(join(dir, 'aborted-plain.xlsx'));
-            await writable.abort('no reason in particular');
+            await assert.doesNotReject(writable.abort('no reason in particular'));
         });
     });
 });

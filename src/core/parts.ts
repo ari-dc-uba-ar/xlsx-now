@@ -7,7 +7,9 @@ const WORKSHEET_CONTENT_TYPE =
 const NAME_MAX_LENGTH = 31;
 const FORBIDDEN_IN_NAME = /[\\/?*[\]:]/g;
 /** Excel refuses a name that starts or ends with one of these, too. */
-const FORBIDDEN_AT_THE_ENDS = /^'+|'+$/g;
+// The end is matched with the character before it (or the start), so a run of
+// quotes is tried once and not once per quote, which would be quadratic.
+const FORBIDDEN_AT_THE_ENDS = /^'+|([^']|^)'+$/g;
 
 /** The part a worksheet is written to. `number` is 1-based, as Excel numbers them. */
 export function worksheetPart(number: number): string {
@@ -98,7 +100,7 @@ export function workbookRelsXml(sheetCount: number): string {
 export function sheetName(asked: unknown, taken: readonly string[], number: number): string {
     const cleaned =
         typeof asked === 'string'
-            ? asked.replace(FORBIDDEN_IN_NAME, '').replace(FORBIDDEN_AT_THE_ENDS, '').trim()
+            ? asked.replace(FORBIDDEN_IN_NAME, '').replace(FORBIDDEN_AT_THE_ENDS, '$1').trim()
             : '';
     const wanted = (cleaned || `Sheet${number}`).slice(0, NAME_MAX_LENGTH);
 

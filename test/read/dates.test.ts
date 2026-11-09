@@ -8,7 +8,7 @@
 // are the one place that needs to name `Temporal.PlainDate` in TypeScript.
 import assert from 'node:assert/strict';
 import { Temporal } from 'temporal-polyfill';
-import { isoDuration, readDate, readDates, readDuration, readIsoDate } from '../../src/core/read/dates.js';
+import { isoDuration, readDate, readDatesAs, readDuration, readIsoDate } from '../../src/core/read/dates.js';
 
 /** 15/01/2024, and the same day at half past twelve. */
 const DAY = 45306;
@@ -16,14 +16,14 @@ const NOON_AND_A_HALF = 45306.5;
 /** Half past ten in the morning, of no day at all. */
 const TIME = 0.4375;
 
-describe('readDates', () => {
+describe('readDatesAs', () => {
     it('reads dates as Temporal values when nothing was asked for', () => {
-        assert.equal(readDates(undefined), 'temporal');
+        assert.equal(readDatesAs(undefined), 'temporal');
     });
 
     it('says what the modes are when it is handed something else', () => {
         assert.throws(
-            () => readDates('plainDate' as 'temporal'),
+            () => readDatesAs('plainDate' as 'temporal'),
             /"plainDate" is not how a date can be read.*temporal, utcDate, localDate, isoString/s,
         );
     });
@@ -45,7 +45,7 @@ describe('readDates', () => {
             assert.throws(() => fresh.requireTemporal(), /Temporal\.PlainDate/);
             assert.throws(
                 () => fresh.requireTemporal(),
-                /dates: "utcDate", "localDate" or "isoString"/,
+                /datesAs: "utcDate", "localDate" or "isoString"/,
             );
         } finally {
             global.Temporal = temporal;

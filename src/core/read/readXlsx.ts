@@ -6,7 +6,7 @@
 // collect those rows into a grid, which is what most callers want and what
 // none of them should have to hold if they don't.
 import type { StyledCell } from '../types.js';
-import { readDates, type ReadDates } from './dates.js';
+import { readDatesAs, type ReadDatesAs } from './dates.js';
 import { NO_FORMATS, readNumberFormats, type NumberFormats } from './numberFormats.js';
 import { bytesAccess, type RandomAccess } from './randomAccess.js';
 import { readSharedStrings } from './sharedStrings.js';
@@ -49,13 +49,13 @@ export interface ReadOptions<M extends ReadMode> {
      * What a date cell is built as: a `Temporal` value, a `Date` read in UTC, a
      * `Date` read locally, or the ISO text. Defaults to `temporal`, which is
      * the only one of the four that says exactly what the sheet says — see
-     * `ReadDates`.
+     * `ReadDatesAs`.
      *
      * `temporal` needs a `Temporal` in the environment, native or a polyfill,
      * and a package opened without one fails here rather than at the first
      * date it reads.
      */
-    dates?: ReadDates;
+    datesAs?: ReadDatesAs;
     /**
      * The language the text of a cell (`w`) is shown in: `es` or an `es-…`
      * for Spanish, anything else for English. It decides the names of the
@@ -119,7 +119,7 @@ export async function openXlsx<const M extends ReadMode = 'values'>(
 ): Promise<XlsxReader<CellOf<M>>> {
     // Before the file is touched: an option that cannot be honoured is not
     // something to find out about with a sheet already half read.
-    const dates = readDates(options.dates);
+    const datesAs = readDatesAs(options.datesAs);
     const access = source instanceof Uint8Array ? bytesAccess(source) : source;
     const entries = await readCentralDirectory(access);
 
@@ -128,7 +128,7 @@ export async function openXlsx<const M extends ReadMode = 'values'>(
         if (!found) throw new Error(`This package declares a part it does not carry: "${part}".`);
         return found;
     }
-    const textOf = (part: string): Promise<string> => readEntryText(access, entry(part));
+    const textOf = async (part: string): Promise<string> => readEntryText(access, entry(part));
     /** A part named by a relationship, when the package has one of that type. */
     async function optional(
         relationships: Map<string, Relationship>,
@@ -149,7 +149,7 @@ export async function openXlsx<const M extends ReadMode = 'values'>(
         sharedStrings: sharedStringsXml === undefined ? [] : readSharedStrings(sharedStringsXml),
         formats,
         date1904: workbook.date1904,
-        dates,
+        datesAs,
         lang: options.lang,
     };
 
@@ -173,7 +173,7 @@ export async function openXlsx<const M extends ReadMode = 'values'>(
         return {
             name: sheet.name,
             rows,
-            read: () => collect(sheet.name, rows(), workbook.date1904),
+            read: async () => collect(sheet.name, rows(), workbook.date1904),
         };
     });
     return { sheets, date1904: workbook.date1904 };

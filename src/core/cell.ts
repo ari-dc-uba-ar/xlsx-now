@@ -41,7 +41,7 @@ const MIN_SERIAL = 0;
  * carrying by accident — a truncated field, a stray byte of something binary
  * — and one of them is enough to make the whole file unreadable.
  */
-const FORBIDDEN_IN_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
+const FORBIDDEN_IN_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g; // eslint-disable-line no-control-regex -- these are the characters XML 1.0 does not allow
 
 /**
  * Text as XML can carry it: the five entities spelled out, and the characters
@@ -104,23 +104,23 @@ export function columnIndex(letters: string): number | undefined {
 }
 
 /**
- * Which clock a `Date` is read by on the way into a sheet.
+ * Which time zone a `Date` is read in on the way into a sheet.
  *
  * A sheet has no time zone and a `Date` is an instant, so writing one down
- * means picking the clock it is read by, and there are only two answers:
+ * means picking the zone it is read in, and there are only two answers:
  * `local` is the one the caller is looking at — `getFullYear()`,
  * `getHours()` — and `utc` is the one `getUTCHours()` gives. A `Date` built
  * from a local calendar is `local`; one that came from an ISO text with a `Z`
  * on it, or from a database that stores instants, is `utc`.
  */
-export type WriteDates = 'local' | 'utc';
+export type Zone = 'local' | 'utc';
 
-/** The `dates` a workbook was written with, checked. Defaults to `local`. */
-export function writeDates(option: WriteDates | undefined): WriteDates {
-    if (option === undefined) return 'local';
+/** The `zone` a workbook was written with, checked. Defaults to `local`. */
+export function zoneOption(option: Zone | null | undefined): Zone {
+    if (option === undefined || option === null) return 'local';
     if (option !== 'local' && option !== 'utc') {
         throw new Error(
-            `dates: "${String(option)}" is not a clock a Date can be read by: say "local" or "utc".`,
+            `zone: "${String(option)}" is not a zone a Date can be read in: say "local" or "utc".`,
         );
     }
     return option;
@@ -160,7 +160,7 @@ function toLocalISOString(date:Date) {
 }
 
 /**
- * A `Date` as the serial number a sheet stores, read by the clock `dates`
+ * A `Date` as the serial number a sheet stores, read in the time zone `zone`
  * asks for.
  *
  * A sheet has no time zone: what it holds is a wall clock, so a date that
@@ -174,9 +174,9 @@ function toLocalISOString(date:Date) {
  * The key here to move between UTC and LOCAL is mix the constructor and the functions.
  * ISO constructor and funcions suppose UTC, splited integers y,m,d,h,m,s suppose local.
  */
-export function excelSerial(value: Date, dates: WriteDates = 'local'): number {
+export function excelSerial(value: Date, zone: Zone = 'local'): number {
     const wall =
-        dates === 'utc'
+        zone === 'utc'
             ? value.getTime()
             : new Date(toLocalISOString(value)+'Z').getTime()
     const days = wall / MS_PER_DAY + EXCEL_EPOCH_OFFSET_DAYS;
@@ -264,7 +264,7 @@ export function isoSerial(wall: string): number {
  */
 export function fromExcelSerial(serial: number): Date {
     const wall = fromExcelSerialUtc(serial);
-    const match = wall.toISOString().match(/(\d+)-(\d+)-(\d+)[ T]+(\d+):(\d+):(\d+)(?:\.(\d*))/)
+    const match = wall.toISOString().match(/(\d+)-(\d+)-(\d+)[ T]+(\d+):(\d+):(\d+)(?:\.(\d*))/) // eslint-disable-line sonarjs/super-linear-regex -- the text of toISOString(), of a fixed length
     return match ?
         // @ts-ignore
         new Date(match[1],match[2]-1,match[3],match[4],match[5],match[6],match[7]??0)

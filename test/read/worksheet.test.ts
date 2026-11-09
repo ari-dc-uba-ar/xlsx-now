@@ -20,7 +20,7 @@ const PLAIN: CellContext = {
     date1904: false,
     // The tests below are about what a cell holds, not about what a date is
     // built as, so they read the one that is a `Date` on the caller's clock.
-    dates: 'localDate',
+    datesAs: 'localDate',
 };
 
 function context(overrides: Partial<CellContext>): CellContext {
@@ -28,7 +28,7 @@ function context(overrides: Partial<CellContext>): CellContext {
 }
 
 /** The same, reading its dates as Temporal values. */
-const TEMPORAL: CellContext = { ...PLAIN, dates: 'temporal' };
+const TEMPORAL: CellContext = { ...PLAIN, datesAs: 'temporal' };
 
 /** A cell as the file spells it, with everything it does not say left out. */
 function raw(cell: Partial<RawCell>): RawCell {
@@ -50,7 +50,7 @@ async function rowsOf<C>(
     return rows;
 }
 
-const values = (body: string, ctx = PLAIN, chunks?: number): Promise<ReadRow<ReadValue>[]> =>
+const values = async (body: string, ctx = PLAIN, chunks?: number): Promise<ReadRow<ReadValue>[]> =>
     rowsOf(body, (cell) => cellValue(cell, ctx), chunks);
 
 describe('parseCellReference', () => {
@@ -112,7 +112,7 @@ describe('cellValue', () => {
 
         const utc = cellValue(
             raw({ type: 'd', value: '2024-01-15T12:30:00' }),
-            context({ dates: 'utcDate' }),
+            context({ datesAs: 'utcDate' }),
         );
         assert.ok(utc instanceof Date);
         assert.equal(utc.toISOString(), '2024-01-15T12:30:00.000Z');
@@ -120,7 +120,7 @@ describe('cellValue', () => {
 
     it('reads a date written out as a day alone', () => {
         assert.equal(
-            cellValue(raw({ type: 'd', value: '2024-01-15' }), context({ dates: 'isoString' })),
+            cellValue(raw({ type: 'd', value: '2024-01-15' }), context({ datesAs: 'isoString' })),
             '2024-01-15',
         );
         assert.equal(
@@ -141,7 +141,7 @@ describe('cellValue', () => {
             '1850-06-20',
         );
         assert.equal(
-            cellValue(raw({ type: 'd', value: '1850-06-20' }), context({ dates: 'isoString' })),
+            cellValue(raw({ type: 'd', value: '1850-06-20' }), context({ datesAs: 'isoString' })),
             '1850-06-20',
         );
         const local = cellValue(raw({ type: 'd', value: '1850-06-20' }), PLAIN);
@@ -324,8 +324,8 @@ describe('readRows', () => {
 });
 
 describe('cellValue: a length of time', () => {
-    const ctx = (dates: CellContext['dates']): CellContext =>
-        context({ formats: readNumberFormats(stylesOf(['[h]:mm', 46])), dates });
+    const ctx = (datesAs: CellContext['datesAs']): CellContext =>
+        context({ formats: readNumberFormats(stylesOf(['[h]:mm', 46])), datesAs });
 
     it('is not a date, under a declared code or the built-in one', () => {
         assert.equal(cellValue(raw({ value: '1.25', style: 0 }), ctx('isoString')), 'PT30H');
@@ -343,7 +343,7 @@ describe('cellValue: a length of time', () => {
 
 describe('cellValue: the serial mode', () => {
     it('is the number under a date format, counted from 1900 whatever the workbook says', () => {
-        const ctx = context({ formats: readNumberFormats(stylesOf([14])), dates: 'serial' });
+        const ctx = context({ formats: readNumberFormats(stylesOf([14])), datesAs: 'serial' });
         assert.equal(cellValue(raw({ value: '45306', style: 0 }), ctx), 45306);
         assert.equal(cellValue(raw({ value: '43844', style: 0 }), { ...ctx, date1904: true }), 45306);
     });
@@ -457,7 +457,7 @@ describe('readCell', () => {
     });
 
     it('says what kind of number a cell holds, by its format', () => {
-        const kinds = context({ formats: readNumberFormats(stylesOf(['0.00', 14, '[h]:mm'])), dates: 'serial' });
+        const kinds = context({ formats: readNumberFormats(stylesOf(['0.00', 14, '[h]:mm'])), datesAs: 'serial' });
         assert.deepEqual(readCell(raw({ value: '92', style: 0 }), kinds, { kind: true }), { v: 92, kind: 'number' });
         assert.deepEqual(readCell(raw({ value: '92', style: 1 }), kinds, { kind: true }), { v: 92, kind: 'date' });
         assert.deepEqual(readCell(raw({ value: '92', style: 2 }), kinds, { kind: true }), { v: 92, kind: 'elapsed' });

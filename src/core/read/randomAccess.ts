@@ -28,7 +28,7 @@ export interface RandomAccess {
 export function bytesAccess(bytes: Uint8Array): RandomAccess {
     return {
         size: bytes.length,
-        async read(offset: number, length: number): Promise<Uint8Array> {
+        async read(offset: number, length: number): Promise<Uint8Array> { // eslint-disable-line @typescript-eslint/require-await -- async so that a RangeError is a rejection, as RandomAccess.read promises
             if (offset < 0 || length < 0 || offset + length > bytes.length) {
                 throw new RangeError(
                     `The archive points to bytes ${offset}..${offset + length}, and it is ${bytes.length} bytes long.`,

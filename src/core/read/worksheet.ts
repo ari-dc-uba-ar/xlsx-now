@@ -12,7 +12,7 @@
 // table it does not carry.
 import { columnIndex } from '../cell.js';
 import type { CellType, StyledCell } from '../types.js';
-import { readDate, readDuration, readIsoDate, ZONE, type ReadDates } from './dates.js';
+import { readDate, readDuration, readIsoDate, ZONE, type ReadDatesAs } from './dates.js';
 import {
     codeOf,
     formatDateSerial,
@@ -60,8 +60,8 @@ export interface CellContext {
     sharedStrings: readonly string[];
     formats: NumberFormats;
     date1904: boolean;
-    /** What a date is built as; see `ReadDates`. */
-    dates: ReadDates;
+    /** What a date is built as; see `ReadDatesAs`. */
+    datesAs: ReadDatesAs;
     /**
      * The language the text of a cell is shown in, for `w`: `es` or an `es-…`
      * for Spanish, anything else for English. Left out, a date is shown in ISO.
@@ -96,7 +96,7 @@ function numberOf(raw: RawCell): number {
 
 /** The date a serial means, under whichever epoch the workbook counts from. */
 function dateOf(serial: number, context: CellContext): ReadValue {
-    return readDate(context.date1904 ? serial + DAYS_1904_TO_1900 : serial, context.dates);
+    return readDate(context.date1904 ? serial + DAYS_1904_TO_1900 : serial, context.datesAs);
 }
 
 /**
@@ -123,7 +123,7 @@ export function cellValue(raw: RawCell, context: CellContext): ReadValue {
             const kind = context.formats.kind(raw.style);
             // A length of time is a number of days, the same in either epoch:
             // thirty hours are thirty hours whatever day the workbook starts on.
-            if (kind === 'elapsed') return readDuration(value, context.dates);
+            if (kind === 'elapsed') return readDuration(value, context.datesAs);
             return kind === 'date' ? dateOf(value, context) : value;
         }
         case 's': {
@@ -147,7 +147,7 @@ export function cellValue(raw: RawCell, context: CellContext): ReadValue {
             // is what a day the serial cannot number has to be written as. It
             // never becomes one: see `readIsoDate` — and the 1904 epoch has
             // nothing to shift in a text that names its own day.
-            return readIsoDate(raw.value, context.dates);
+            return readIsoDate(raw.value, context.datesAs);
         default:
             throw new Error(`A cell says it holds "${raw.type}", which is not a type a sheet has.`);
     }
@@ -185,7 +185,7 @@ export function styledCell(raw: RawCell, context: CellContext): StyledCell {
  * A length of time is shown under its code either way, since `30:00` says the
  * same thing in every language.
  */
-export function cellText(raw: RawCell, context: CellContext): string {
+export function cellText(raw: RawCell, context: CellContext): string { // eslint-disable-line complexity -- reviewed: splitting it would not make it more readable
     const locale = localeFor(context.lang);
     switch (raw.type) {
         case undefined:
@@ -235,7 +235,7 @@ export function cellText(raw: RawCell, context: CellContext): string {
  * would not. The one exception is `w`, which is always there when it was
  * asked for, and `v`, which is `null` for a cell that holds nothing.
  */
-export function readCell(raw: RawCell, context: CellContext, fields: ReadFields): Partial<ReadCell> {
+export function readCell(raw: RawCell, context: CellContext, fields: ReadFields): Partial<ReadCell> { // eslint-disable-line complexity -- reviewed: splitting it would not make it more readable
     const cell: Partial<ReadCell> = {};
     if (fields.v !== false) cell.v = cellValue(raw, context);
     if (fields.s) {
@@ -288,7 +288,7 @@ export async function* readRows<C>(
 
     const parser = new XmlParser(
         {
-            open(name, attributes) {
+            open(name, attributes) { // eslint-disable-line complexity -- reviewed: splitting it would not make it more readable
                 if (name === 'sheetData') {
                     inSheetData = true;
                     return;

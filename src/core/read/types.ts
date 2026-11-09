@@ -11,10 +11,10 @@ import type { FormatKind } from './numberFormats.js';
  * a file: what a sheet stores is a number, a string, a boolean or nothing,
  * and a date is the one of them the format gives a meaning to.
  *
- * Which of the date types it is, is the reader's `dates` option and nothing
+ * Which of the date types it is, is the reader's `datesAs` option and nothing
  * else: they are all four in the union because the option is read at run time,
  * and a caller who picked one knows which one they picked. A `string` is in it
- * twice over, being both what a text cell holds and what `dates: 'isoString'`
+ * twice over, being both what a text cell holds and what `datesAs: 'isoString'`
  * gives back.
  *
  * `null` is a cell that is there and empty. A cell that is not there at all
@@ -49,7 +49,7 @@ export interface ReadStyle {
  * them, so that `v`, `s`, `f` and `t` go straight back into a workbook.
  */
 export interface ReadCell {
-    /** The value, built as `dates` says. */
+    /** The value, built as `datesAs` says. */
     v: ReadValue;
     /** The number format, when it is not `General`. */
     s?: ReadStyle;

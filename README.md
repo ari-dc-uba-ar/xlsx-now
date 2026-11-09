@@ -570,18 +570,18 @@ serial under `1` is a time of day with no day left — `0.4375` is half past ten
 in the morning and nothing else. The reader decides the same way, from the same
 number, which is what makes a date read back the way it was written.
 
-#### `dates`: which clock a `Date` is read by
+#### `zone`: which time zone a `Date` is read in
 
 A sheet has no time zone and a `Date` is an instant, so writing one down means
-picking the clock that reads it. There are two answers and `dates` is where the
+picking the zone it is read in. There are two answers and `zone` is where the
 workbook says which:
 
 ```js
 createXlsxStream({ rows });                  // 'local', the default
-createXlsxStream({ dates: 'utc', rows });    // the UTC clock instead
+createXlsxStream({ zone: 'utc', rows });     // UTC instead
 ```
 
-| `dates` | the serial is what the date reads as under |
+| `zone` | the serial is what the date reads as under |
 | --- | --- |
 | `local` | `getFullYear()`, `getHours()` — the caller's own clock |
 | `utc` | `getUTCFullYear()`, `getUTCHours()` |
@@ -602,7 +602,7 @@ option does.
 
 A `Temporal.PlainDate`, a `PlainDateTime` and a `PlainTime` are wall clocks
 already — no instant, no zone, nothing to pick — so they go in as they read,
-whatever `dates` says:
+whatever `zone` says:
 
 ```js
 createXlsxStream({ rows: [[Temporal.PlainDate.from('2024-01-15')]] });
@@ -1248,7 +1248,7 @@ writer names them, so `v`, `s`, `f` and `t` go straight back into a workbook:
 
 | field | what it is |
 | --- | --- |
-| `v` | the value, built as `dates` says — there unless the mode says `v: false` |
+| `v` | the value, built as `datesAs` says — there unless the mode says `v: false` |
 | `s` | `{ numFmt }`, when the format is not `General` |
 | `f` | the formula |
 | `t` | `str` or `e`, only where the writer would not work it out |
@@ -1299,7 +1299,7 @@ is shown in ISO with no `lang` because it is the one way of writing a date that
 nobody can read as a different one. Reading `w` without a `lang` says so on
 the console, once.
 
-### Dates: `dates`, and the day that never was
+### Dates: `datesAs`, and the day that never was
 
 A date in a sheet is a number; the only thing that makes it a date is the
 number format its style points at. So the reader parses `styles.xml` — the one
@@ -1307,15 +1307,15 @@ part of the styling it does read — for exactly two questions: which format
 each style shows, and whether that format writes a date. A number under one
 comes back as a date, and the same number under a plain format stays a number.
 
-*Which* date is the `dates` option, and there are five answers to the one
+*Which* date is the `datesAs` option, and there are five answers to the one
 number:
 
 ```js
 await readXlsx(bytes);                          // Temporal values, the default
-await readXlsx(bytes, { dates: 'localDate' });  // Dates on the caller's clock
+await readXlsx(bytes, { datesAs: 'localDate' });  // Dates on the caller's clock
 ```
 
-| `dates` | `45306` | `45306.5` | `0.4375` |
+| `datesAs` | `45306` | `45306.5` | `0.4375` |
 | --- | --- | --- | --- |
 | `temporal` | `Temporal.PlainDate` | `Temporal.PlainDateTime` | `Temporal.PlainTime` |
 | `utcDate` | `Date`, read in UTC | the same | the same |
@@ -1330,7 +1330,7 @@ same day is the same number whichever epoch the file declared. A date written
 out in text (below) becomes the number it would have had — and a day before
 31/12/1899 becomes a number below zero, the count carried on backwards. That is
 a number Excel cannot show, so a serial read this way is for a program to use,
-not one to write back into a sheet; `cells` with any other `dates` is what goes
+not one to write back into a sheet; `cells` with any other `datesAs` is what goes
 back.
 
 #### A length of time is not a date
@@ -1339,7 +1339,7 @@ A number under an elapsed format — `[h]:mm`, `[mm]:ss`, `[ss]`, or built-in
 format 46 — is a length: `1.25` under `[h]:mm` is thirty hours, shown `30:00`,
 and not six in the morning of the first of January of 1900. It is read as one:
 
-| `dates` | `1.25` under `[h]:mm` |
+| `datesAs` | `1.25` under `[h]:mm` |
 | --- | --- |
 | `temporal` | `Temporal.Duration` of `PT30H` |
 | `isoString` | `'PT30H'` |
@@ -1360,7 +1360,7 @@ polyfill imported before the workbook is opened — and when there is none,
 ```
 Dates are read as Temporal values and this environment has no
 Temporal.PlainDate: run where there is one, install a polyfill, or say how
-dates should be built with dates: "utcDate", "localDate" or "isoString".
+dates should be built with datesAs: "utcDate", "localDate" or "isoString".
 ```
 
 **Which of the three a number becomes is the number's own doing**: a whole
@@ -1392,13 +1392,13 @@ does not go negative. A file with an older date has nothing to number it as,
 so it writes the day out in ISO text instead — the `t="d"` cell of the spec,
 which Excel itself does not write and which the reader takes for exactly that
 reason. It never becomes a serial on the way in, except where a serial is what
-was asked for: the text goes straight to whichever of the other four `dates`
+was asked for: the text goes straight to whichever of the other four `datesAs`
 was asked for, so `1850-06-20` reads as the day it says under all of them —
 and as `-18091` under `serial`.
 
 A file that writes such a day as a number anyway — `-18091` under a date
 format, which Excel shows as `######` — is read the same way: the count
-carried on backwards has one meaning, so it is given, under every `dates`,
+carried on backwards has one meaning, so it is given, under every `datesAs`,
 rather than refused. The writer still writes nothing below zero.
 
 ### Where the bytes come from

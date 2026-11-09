@@ -52,7 +52,7 @@ describe('createXlsxStream', () => {
 
     it('reads records only as the consumer asks for bytes', async () => {
         let read = 0;
-        async function* counted(): AsyncGenerator<CellRow> {
+        async function* counted(): AsyncGenerator<CellRow> { // eslint-disable-line @typescript-eslint/require-await -- an async generator: it has to be async to be an AsyncIterable
             for (let i = 0; i < 10000; i++) {
                 read++;
                 yield [i, 'a fairly long value, so a batch fills in a few thousand rows'];
@@ -106,11 +106,11 @@ describe('createXlsxStream', () => {
         };
         const reader = createXlsxStream({ rows }).getReader();
         await reader.read();
-        await reader.cancel();
+        await assert.doesNotReject(reader.cancel());
     });
 
     it('lets a failing source through to the consumer', async () => {
-        async function* failing(): AsyncGenerator<CellRow> {
+        async function* failing(): AsyncGenerator<CellRow> { // eslint-disable-line @typescript-eslint/require-await -- an async generator: it has to be async to be an AsyncIterable
             yield ['a'];
             throw new Error('the cursor died');
         }
@@ -187,7 +187,7 @@ describe('createXlsxStream with sheets', () => {
     it('reads a sheet only while it is the one being written', async () => {
         const started: string[] = [];
         function rowsOf(name: string): AsyncGenerator<CellRow> {
-            return (async function* () {
+            return (async function* () { // eslint-disable-line @typescript-eslint/require-await -- an async generator: it has to be async to be an AsyncIterable
                 started.push(name);
                 yield [name];
             })();
@@ -242,7 +242,7 @@ describe('createXlsxStream with sheets', () => {
     });
 
     it('lets a failing sheet source through to the consumer', async () => {
-        async function* failing(): AsyncGenerator<XlsxSheet> {
+        async function* failing(): AsyncGenerator<XlsxSheet> { // eslint-disable-line @typescript-eslint/require-await -- an async generator: it has to be async to be an AsyncIterable
             yield { name: 'Buena', rows: [['a']] };
             throw new Error('the report list died');
         }
@@ -252,7 +252,7 @@ describe('createXlsxStream with sheets', () => {
         );
     });
 
-    it('refuses rows and sheets together, and neither', async () => {
+    it('refuses rows and sheets together, and neither', () => {
         assert.throws(
             () =>
                 createXlsxStream({

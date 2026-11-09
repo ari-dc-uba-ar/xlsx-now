@@ -28,7 +28,7 @@ async function* simulateUpstreamRows(count: number): AsyncGenerator<Row> {
     }
 }
 
-function generateXlsxBlob(rowCount = 200): Promise<Blob> {
+async function generateXlsxBlob(rowCount = 200): Promise<Blob> {
     return createXlsxBlob({
         columns,
         rows: simulateUpstreamRows(rowCount),

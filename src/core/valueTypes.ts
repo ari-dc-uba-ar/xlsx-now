@@ -13,7 +13,7 @@
 // the first entry of the map rather than a case above it, which is the whole
 // test of whether this generalizes: a `Temporal.PlainDate`, a `BigInt`, or a
 // class of the caller's own goes in the same way and costs the same.
-import { excelSerial, serialKind, type DateKind, type WriteDates } from './cell.js';
+import { excelSerial, serialKind, zoneOption, type DateKind, type Zone } from './cell.js';
 import { DEFAULT_DATE_FORMATS, type DateFormats } from './styles.js';
 import {
     temporalApi,
@@ -42,12 +42,21 @@ export interface ConvertContext {
      */
     readonly dates: DateFormats;
     /**
-     * Which clock a `Date` is read by, as the workbook's `dates` option said
+     * Which time zone a `Date` is read in, as the workbook's `zone` option said
      * it. It is the one thing a `Date` cannot say for itself — a
      * `Temporal.PlainDate` already has — so it is the only thing this adds.
      */
-    readonly clock: WriteDates;
+    readonly zone: Zone;
 }
+
+/**
+ * A `ConvertContext` as it is handed to `ValueTypes`: each part that is left
+ * out, `null` or `undefined` takes its default on its own, so leaving one out
+ * never takes the others with it.
+ */
+export type ConvertContextOptions = {
+    readonly [K in keyof ConvertContext]?: ConvertContext[K] | null | undefined;
+};
 
 /**
  * A value the writer did not know, said in terms it does.
@@ -164,8 +173,8 @@ export function serialValue(
 }
 
 /**
- * A `Date` as a cell holds it: the serial number for the clock the workbook
- * reads its dates by — see `dates` in the writer options — under the format
+ * A `Date` as a cell holds it: the serial number for the time zone the workbook
+ * reads its dates in — see `zone` in the writer options — under the format
  * that kind of date is shown in.
  *
  * Exported because it is what a caller's own date-like type delegates to —
@@ -173,7 +182,7 @@ export function serialValue(
  * of a handler for a class that wraps a `Date`.
  */
 export function dateValue(value: Date, context: ConvertContext): ConvertedValue {
-    return serialValue(excelSerial(value, context.clock), context);
+    return serialValue(excelSerial(value, context.zone), context);
 }
 
 /**
@@ -366,12 +375,9 @@ export class ValueTypes {
     /** `prototype` -> the handler it resolved to, or `null` for none. */
     private readonly resolved = new WeakMap<object, RegisteredHandler | null>();
 
-    constructor(
-        types: TypeMap = defaultTypes,
-        context: ConvertContext = { dates: DEFAULT_DATE_FORMATS, clock: 'local' },
-    ) {
+    constructor(types?: TypeMap | null, context?: ConvertContextOptions | null) {
         let objectHandler: RegisteredHandler | undefined;
-        for (const [type, handler] of types) {
+        for (const [type, handler] of types ?? defaultTypes) {
             if (type === Object) {
                 objectHandler = handler;
                 continue;
@@ -387,7 +393,10 @@ export class ValueTypes {
             }
         }
         this.objectHandler = objectHandler;
-        this.context = context;
+        this.context = {
+            dates: context?.dates ?? DEFAULT_DATE_FORMATS,
+            zone: zoneOption(context?.zone),
+        };
     }
 
     /**

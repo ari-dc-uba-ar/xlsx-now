@@ -31,7 +31,7 @@ const RECORDS: Row[] = [
 ];
 
 async function generate(columns: readonly Column[], rows: Row[]): Promise<Buffer> {
-    return collect(createXlsxStream({ columns, rows, sheetName: 'People', dates:'utc' }));
+    return collect(createXlsxStream({ columns, rows, sheetName: 'People', zone:'utc' }));
 }
 
 async function open(bytes: Buffer): Promise<ExcelJS.Worksheet> {
@@ -519,6 +519,6 @@ describe('a workbook whose data carried what XML cannot, read back with exceljs'
             createXlsxStream({ rows: [[DIRTY]] } as Parameters<typeof createXlsxStream>[0]),
         );
         const { sheet } = await readXlsx(bytes);
-        assert.doesNotMatch(sheet, /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);
+        assert.doesNotMatch(sheet, /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/); // eslint-disable-line no-control-regex -- the characters XML 1.0 does not allow must not be in the file
     });
 });

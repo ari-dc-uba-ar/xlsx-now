@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import { formatKind, isDateFormat, readNumberFormats } from '../../src/core/read/numberFormats.js';
+import {
+    formatKind,
+    isDateFormat,
+    MAX_FORMAT_LENGTH,
+    readNumberFormats,
+} from '../../src/core/read/numberFormats.js';
 import { stylesOf } from '../helpers/package.js';
 
 describe('isDateFormat', () => {
@@ -86,5 +91,17 @@ describe('readNumberFormats', () => {
         const formats = readNumberFormats(stylesOf([14]));
         assert.equal(formats.forStyle(7), undefined);
         assert.equal(formats.isDate(7), false);
+    });
+
+    it('takes a format as long as the longest Excel takes', () => {
+        const code = '0'.repeat(MAX_FORMAT_LENGTH);
+        assert.equal(readNumberFormats(stylesOf([code])).forStyle(0), code);
+    });
+
+    it('refuses a format longer than the longest Excel takes', () => {
+        assert.throws(
+            () => readNumberFormats(stylesOf(['0'.repeat(MAX_FORMAT_LENGTH + 1)])),
+            /256 characters long, longer than the 255/,
+        );
     });
 });

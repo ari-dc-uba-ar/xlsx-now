@@ -93,7 +93,7 @@ export function localeFor(lang: string | undefined): Locale {
  * Japanese, Chinese and Korean locales — are taken as the short date of the
  * language asked for. An id this does not know is shown as `General`.
  */
-export function builtinCode(id: number, locale: Locale): string {
+export function builtinCode(id: number, locale: Locale): string { // eslint-disable-line complexity -- reviewed: splitting it would not make it more readable
     switch (id) {
         case 1: return '0';
         case 2: return '0.00';
@@ -147,12 +147,12 @@ function sections(code: string): string[] {
         const char = code[index];
         if (char === '"') {
             const end = code.indexOf('"', index + 1);
-            index = end === -1 ? code.length : end;
+            index = end === -1 ? code.length : end; // eslint-disable-line sonarjs/updated-loop-counter -- the loop goes on after what was read here
         } else if (char === '\\' || char === '_' || char === '*') {
             index++;
         } else if (char === '[') {
             const end = code.indexOf(']', index + 1);
-            index = end === -1 ? code.length : end;
+            index = end === -1 ? code.length : end; // eslint-disable-line sonarjs/updated-loop-counter -- the loop goes on after what was read here
         } else if (char === ';') {
             found.push(code.slice(start, index));
             start = index + 1;
@@ -187,7 +187,7 @@ function runOf(code: string, index: number): number {
 }
 
 /** A date code, taken apart. Only its first section is read: a date is never negative. */
-function dateTokens(code: string): DateToken[] {
+function dateTokens(code: string): DateToken[] { // eslint-disable-line complexity, max-statements -- reviewed: splitting it would not make it more readable
     const text = sections(code)[0] ?? '';
     const tokens: DateToken[] = [];
     for (let index = 0; index < text.length; index++) {
@@ -197,7 +197,7 @@ function dateTokens(code: string): DateToken[] {
             const end = text.indexOf('"', index + 1);
             const stop = end === -1 ? text.length : end;
             tokens.push({ kind: 'literal', text: text.slice(index + 1, stop) });
-            index = stop;
+            index = stop; // eslint-disable-line sonarjs/updated-loop-counter -- the loop goes on after what was read here
         } else if (char === '\\') {
             tokens.push({ kind: 'literal', text: text[index + 1] ?? '' });
             index++;
@@ -218,7 +218,7 @@ function dateTokens(code: string): DateToken[] {
                 // `[$€-C0A]`: a currency symbol, and the locale it belongs to.
                 tokens.push({ kind: 'literal', text: inside.slice(1).split('-')[0] ?? '' });
             }
-            index = stop;
+            index = stop; // eslint-disable-line sonarjs/updated-loop-counter -- the loop goes on after what was read here
         } else if (text.slice(index, index + 5).toUpperCase() === 'AM/PM') {
             tokens.push({ kind: 'ampm', am: 'AM', pm: 'PM' });
             index += 4;
@@ -318,7 +318,7 @@ function roundingOf(tokens: readonly DateToken[]): number {
  * both, because the one thing that changes is which field counts in full —
  * the `[h]` of an elapsed code — and that is a token of its own.
  */
-function renderDate(
+function renderDate( // eslint-disable-line complexity -- reviewed: splitting it would not make it more readable
     tokens: readonly DateToken[],
     day: CalendarDay | undefined,
     time: number,
@@ -431,7 +431,7 @@ export function formatDateText(wall: string, code: string, locale: Locale): stri
 /**
  * A serial as ISO text, the way a date is shown when no language was given:
  * the day, the day and the hour, or the hour, as the number says — the same
- * text `dates: 'isoString'` reads it as.
+ * text `datesAs: 'isoString'` reads it as.
  */
 export function isoOfSerial(serial: number): string {
     const total = Math.round(serial * MS_PER_DAY);
@@ -471,7 +471,7 @@ interface NumberSection {
 
 const DIGIT = /[0#?]/;
 
-function numberSection(text: string): NumberSection | undefined {
+function numberSection(text: string): NumberSection | undefined { // eslint-disable-line complexity, max-statements -- reviewed: splitting it would not make it more readable
     const tokens: NumberToken[] = [];
     let grouped = false;
     let scale = 0;
@@ -483,7 +483,7 @@ function numberSection(text: string): NumberSection | undefined {
             const end = text.indexOf('"', index + 1);
             const stop = end === -1 ? text.length : end;
             tokens.push({ kind: 'literal', text: text.slice(index + 1, stop) });
-            index = stop;
+            index = stop; // eslint-disable-line sonarjs/updated-loop-counter -- the loop goes on after what was read here
         } else if (char === '\\') {
             tokens.push({ kind: 'literal', text: text[index + 1] ?? '' });
             index++;
@@ -502,7 +502,7 @@ function numberSection(text: string): NumberSection | undefined {
             if (inside.startsWith('$')) {
                 tokens.push({ kind: 'literal', text: inside.slice(1).split('-')[0] ?? '' });
             }
-            index = stop;
+            index = stop; // eslint-disable-line sonarjs/updated-loop-counter -- the loop goes on after what was read here
         } else if (text.slice(index, index + 7).toLowerCase() === 'general') {
             tokens.push({ kind: 'general' });
             index += 6;
@@ -541,7 +541,7 @@ function numberSection(text: string): NumberSection | undefined {
 
 /** Thousands separators put into a run of digits. */
 function group(digits: string, separator: string): string {
-    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, separator);
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, separator); // eslint-disable-line sonarjs/super-linear-regex -- bounded: the digits of a number (309 at most) and the placeholders of its format (MAX_FORMAT_LENGTH at most)
 }
 
 /**
@@ -578,7 +578,7 @@ function fillDecimals(placeholders: readonly string[], digits: string): string[]
     return filled;
 }
 
-function renderNumber(section: NumberSection, value: number, locale: Locale): string | undefined {
+function renderNumber(section: NumberSection, value: number, locale: Locale): string | undefined { // eslint-disable-line complexity, max-statements -- reviewed: splitting it would not make it more readable
     let number = value * 100 ** section.percent / 1000 ** section.scale;
     const { tokens } = section;
     const pointAt = tokens.findIndex((token) => token.kind === 'point');

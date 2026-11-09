@@ -26,13 +26,14 @@ import {
     withType,
     type ConvertedValue,
     type ConvertContext,
+    type ConvertContextOptions,
     type TypeMap,
 } from '../src/core/valueTypes.js';
 
 /** The context a workbook that said nothing about its dates hands out. */
-const PLAIN: ConvertContext = { dates: new DateFormats(), clock: 'local' };
+const PLAIN: ConvertContext = { dates: new DateFormats(), zone: 'local' };
 /** The same workbook, reading its `Date`s by the UTC clock instead. */
-const UTC: ConvertContext = { dates: new DateFormats(), clock: 'utc' };
+const UTC: ConvertContext = { dates: new DateFormats(), zone: 'utc' };
 
 describe('dateValue', () => {
     it('writes a Date as an Excel serial number', () => {
@@ -52,7 +53,7 @@ describe('dateValue', () => {
     it('takes the formats the workbook it belongs to uses', () => {
         const context: ConvertContext = {
             dates: new DateFormats({ dateFormat: 'yyyy-mm-dd' }),
-            clock: 'local',
+            zone: 'local',
         };
         assert.equal(dateValue(new Date(2024, 0, 15), context).numFmt, 'yyyy-mm-dd');
         assert.equal(
@@ -74,7 +75,7 @@ describe('dateValue', () => {
     it('measures a date the workbook spelled out by its own format code', () => {
         const context: ConvertContext = {
             dates: new DateFormats({ dateFormat: 'dd/mm/yy' }),
-            clock: 'local',
+            zone: 'local',
         };
         assert.equal(dateValue(new Date(2024, 0, 15), context).width, 'dd/mm/yy'.length);
     });
@@ -242,6 +243,37 @@ describe('withType', () => {
         });
         assert.equal(types.get(Money), handler);
         assert.ok(types.get(Weight));
+    });
+});
+
+describe('ValueTypes: the context it is handed', () => {
+    const noon = new Date(Date.UTC(2024, 0, 15, 12, 0));
+    const formats = new DateFormats({ dateFormat: 'yyyy-mm-dd' });
+    /** The same Date, converted by a `ValueTypes` given this context. */
+    function convertedBy(context: ConvertContextOptions | null | undefined): ConvertedValue | undefined {
+        return new ValueTypes(defaultTypes, context).convert(noon);
+    }
+
+    it('reads Dates in the zone it is given', () => {
+        assert.deepEqual(convertedBy({ zone: 'utc' }), dateValue(noon, UTC));
+    });
+
+    it('takes the default zone for one that is left out', () => {
+        assert.deepEqual(convertedBy({ dates: formats }), dateValue(noon, { dates: formats, zone: 'local' }));
+    });
+
+    it('takes the default zone for one that is null or undefined', () => {
+        assert.deepEqual(convertedBy({ dates: formats, zone: null }), dateValue(noon, { dates: formats, zone: 'local' }));
+        assert.deepEqual(convertedBy({ dates: formats, zone: undefined }), dateValue(noon, { dates: formats, zone: 'local' }));
+    });
+
+    it('takes the default formats for ones that are null, keeping the zone it is given', () => {
+        assert.deepEqual(convertedBy({ dates: null, zone: 'utc' }), dateValue(noon, UTC));
+    });
+
+    it('takes every default without a context', () => {
+        assert.deepEqual(convertedBy(undefined), dateValue(noon, PLAIN));
+        assert.deepEqual(convertedBy(null), dateValue(noon, PLAIN));
     });
 });
 

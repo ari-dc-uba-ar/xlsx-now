@@ -355,7 +355,7 @@ function fitsUnderMerge(cell: Cell, styled: StyledCell | undefined): boolean {
  * there for a row written on its own, with no sheet around it to remember
  * anything.
  */
-export function cellRowXml(
+export function cellRowXml( // eslint-disable-line complexity, max-statements -- reviewed: splitting it would not make it more readable
     rowNumber: number,
     row: CellRow,
     styles: StyleTable,

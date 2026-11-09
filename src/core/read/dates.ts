@@ -10,7 +10,7 @@ import { requireTemporal } from '../temporal.js';
 import type { ReadValue } from './types.js';
 
 /**
- * What a date cell is built as, as the `dates` option of the reader says it:
+ * What a date cell is built as, as the `datesAs` option of the reader says it:
  *
  * - `temporal` — a `Temporal.PlainDate`, `PlainDateTime` or `PlainTime`,
  *   whichever the number turns out to be. The default, and the only one of the
@@ -38,25 +38,25 @@ import type { ReadValue } from './types.js';
  * duration (`PT30H`) under `isoString`, and the number under the other three,
  * since a `Date` has nothing to say a length with.
  */
-export type ReadDates = 'temporal' | 'utcDate' | 'localDate' | 'isoString' | 'serial';
+export type ReadDatesAs = 'temporal' | 'utcDate' | 'localDate' | 'isoString' | 'serial';
 
-const MODES: readonly ReadDates[] = ['temporal', 'utcDate', 'localDate', 'isoString', 'serial'];
+const MODES: readonly ReadDatesAs[] = ['temporal', 'utcDate', 'localDate', 'isoString', 'serial'];
 
 /**
- * The `dates` a package was opened with, checked once and up front — including
+ * The `datesAs` a package was opened with, checked once and up front — including
  * the `Temporal` that `temporal` needs, so a workbook that cannot be read the
  * way it was asked for fails at `openXlsx` and not at the first date of the
  * first sheet.
  */
-export function readDates(option: ReadDates | undefined): ReadDates {
-    const dates = option ?? 'temporal';
-    if (!MODES.includes(dates)) {
+export function readDatesAs(option: ReadDatesAs | undefined): ReadDatesAs {
+    const datesAs = option ?? 'temporal';
+    if (!MODES.includes(datesAs)) {
         throw new Error(
-            `dates: "${String(dates)}" is not how a date can be read: say ${MODES.join(', ')}.`,
+            `datesAs: "${String(datesAs)}" is not how a date can be read: say ${MODES.join(', ')}.`,
         );
     }
-    if (dates === 'temporal') requireTemporal();
-    return dates;
+    if (datesAs === 'temporal') requireTemporal();
+    return datesAs;
 }
 
 /**
@@ -68,11 +68,11 @@ export function readDates(option: ReadDates | undefined): ReadDates {
  * there is no arithmetic below and no time zone in it: past `fromExcelSerialUtc`
  * there is nothing left to move.
  */
-export function readDate(serial: number, dates: ReadDates): ReadValue {
-    if (dates === 'serial') return serial;
-    if (dates === 'localDate') return fromExcelSerial(serial);
+export function readDate(serial: number, datesAs: ReadDatesAs): ReadValue {
+    if (datesAs === 'serial') return serial;
+    if (datesAs === 'localDate') return fromExcelSerial(serial);
     const utc = fromExcelSerialUtc(serial);
-    if (dates === 'utcDate') return utc;
+    if (datesAs === 'utcDate') return utc;
     // `2024-01-15T12:00:00.000Z`, of which every mode below takes a slice.
     const iso = utc.toISOString();
     const kind = serialKind(serial);
@@ -82,7 +82,7 @@ export function readDate(serial: number, dates: ReadDates): ReadValue {
             : kind === 'time'
               ? timeOf(iso)
               : `${iso.slice(0, 10)}T${timeOf(iso)}`;
-    if (dates === 'isoString') return text;
+    if (datesAs === 'isoString') return text;
     const temporal = requireTemporal();
     if (kind === 'date') return temporal.PlainDate.from(text);
     if (kind === 'time') return temporal.PlainTime.from(text);
@@ -117,9 +117,9 @@ export const ZONE = /(?:[Zz]|[+-]\d\d:?\d\d)$/;
  * zone, so a `Z` there is not something the cell can mean — and what is left
  * is the wall clock every other date in the file is too.
  */
-export function readIsoDate(text: string, dates: ReadDates): ReadValue {
+export function readIsoDate(text: string, datesAs: ReadDatesAs): ReadValue {
     const wall = text.replace(ZONE, '');
-    if (dates === 'temporal') {
+    if (datesAs === 'temporal') {
         const temporal = requireTemporal();
         return wall.includes('T')
             ? temporal.PlainDateTime.from(wall)
@@ -129,12 +129,12 @@ export function readIsoDate(text: string, dates: ReadDates): ReadValue {
     // `Date` takes a bare date as UTC and a date with an hour on it as local,
     // and only the second of those is what that mode means.
     const full = wall.includes('T') ? wall : `${wall}T00:00:00`;
-    const date = new Date(dates === 'utcDate' ? `${full}Z` : full);
+    const date = new Date(datesAs === 'utcDate' ? `${full}Z` : full);
     if (Number.isNaN(date.getTime())) {
         throw new Error(`A date cell holds "${text}", which is not a date.`);
     }
-    if (dates === 'serial') return isoSerial(wall);
-    return dates === 'isoString' ? wall : date;
+    if (datesAs === 'serial') return isoSerial(wall);
+    return datesAs === 'isoString' ? wall : date;
 }
 
 const MS_PER_DAY = 86400000;
@@ -163,7 +163,7 @@ export function isoDuration(days: number): string {
     if (hours) text += `${hours}H`;
     if (minutes) text += `${minutes}M`;
     if (seconds || milliseconds) {
-        const fraction = milliseconds ? `.${String(milliseconds).padStart(3, '0').replace(/0+$/, '')}` : '';
+        const fraction = milliseconds ? `.${String(milliseconds).padStart(3, '0').replace(/0+$/, '')}` : ''; // eslint-disable-line sonarjs/super-linear-regex -- 3 characters: the milliseconds
         text += `${seconds}${fraction}S`;
     }
     return `${days < 0 ? '-' : ''}PT${text || '0S'}`;
@@ -176,8 +176,8 @@ export function isoDuration(days: number): string {
  * values, its ISO text where there is text, and where the mode is a `Date` —
  * which has no way to say a length — or the number itself, the number.
  */
-export function readDuration(days: number, dates: ReadDates): ReadValue {
-    if (dates === 'isoString') return isoDuration(days);
-    if (dates === 'temporal') return requireTemporal().Duration.from(isoDuration(days));
+export function readDuration(days: number, datesAs: ReadDatesAs): ReadValue {
+    if (datesAs === 'isoString') return isoDuration(days);
+    if (datesAs === 'temporal') return requireTemporal().Duration.from(isoDuration(days));
     return days;
 }

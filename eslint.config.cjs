@@ -1,10 +1,20 @@
 "use strict";
 
 const tseslint = require("typescript-eslint");
+const sonarjs = require("eslint-plugin-sonarjs");
 
 module.exports = [
     {
         ignores: ["dist/**", "rollup.config.mjs", "dist-test/**"]
+    },
+    {
+        // SonarQube rules (the ones silenced in the code)
+        files: ["src/**/*.ts"],
+        plugins: { sonarjs },
+        rules: {
+            "sonarjs/super-linear-regex": 2,
+            "sonarjs/updated-loop-counter": 2
+        }
     },
     {
         languageOptions: {
@@ -211,7 +221,8 @@ module.exports = [
         languageOptions: {
             parser: tseslint.parser,
             parserOptions: {
-                projectService: true,
+                // the tests are in tsconfig.test.json, not in tsconfig.json
+                project: ["./tsconfig.json", "./tsconfig.test.json"],
                 tsconfigRootDir: __dirname
             },
             sourceType: "module"

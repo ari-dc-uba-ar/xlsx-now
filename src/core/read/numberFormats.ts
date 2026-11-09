@@ -14,6 +14,13 @@ const PART_NAME = 'xl/styles.xml';
 const GENERAL = 0;
 
 /**
+ * The longest number format Excel takes. A longer one is not a format a
+ * spreadsheet program wrote, and the code that shows a number under it would
+ * be working through every one of its characters for every cell.
+ */
+export const MAX_FORMAT_LENGTH = 255;
+
+/**
  * The formats every reader is born knowing, of the ones that are dates.
  *
  * 14 to 22 are the short dates and the times, 45 and 47 the minutes and
@@ -74,14 +81,14 @@ export function formatKind(code: string): FormatKind {
         const char = code[index] as string;
         if (char === '"') {
             const end = code.indexOf('"', index + 1);
-            index = end === -1 ? code.length : end;
+            index = end === -1 ? code.length : end; // eslint-disable-line sonarjs/updated-loop-counter -- the loop goes on after what was read here
         } else if (char === '\\' || char === '_' || char === '*') {
             index++;
         } else if (char === '[') {
             const end = code.indexOf(']', index + 1);
             const inside = code.slice(index + 1, end === -1 ? code.length : end);
             if (/^[hms]+$/i.test(inside)) return 'elapsed';
-            index = end === -1 ? code.length : end;
+            index = end === -1 ? code.length : end; // eslint-disable-line sonarjs/updated-loop-counter -- the loop goes on after what was read here
         } else if (DATE_LETTERS.has(char.toLowerCase())) kind = 'date';
     }
     return kind;
@@ -136,6 +143,11 @@ export function readNumberFormats(xml: string): NumberFormats {
                 if (name === 'numFmt') {
                     const id = Number(attributes['numFmtId']);
                     const code = attributes['formatCode'];
+                    if (code !== undefined && code.length > MAX_FORMAT_LENGTH) {
+                        throw new Error(
+                            `The number format ${attributes['numFmtId']} is ${code.length} characters long, longer than the ${MAX_FORMAT_LENGTH} a number format can have.`,
+                        );
+                    }
                     if (Number.isInteger(id) && code !== undefined) codes.set(id, code);
                 } else if (name === 'cellXfs') inCellXfs = true;
                 else if (name === 'xf' && inCellXfs) {

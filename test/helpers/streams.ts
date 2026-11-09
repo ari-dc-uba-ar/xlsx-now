@@ -12,7 +12,7 @@ export async function collect(stream: ReadableStream<Uint8Array>): Promise<Buffe
 }
 
 /** The values of `items`, reachable only through `for await`. */
-export async function* asAsyncIterable<T>(items: readonly T[]): AsyncGenerator<T> {
+export async function* asAsyncIterable<T>(items: readonly T[]): AsyncGenerator<T> { // eslint-disable-line @typescript-eslint/require-await -- an async generator: it has to be async to be an AsyncIterable
     for (const item of items) yield item;
 }
 

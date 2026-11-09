@@ -43,7 +43,7 @@ export function createFileWritable(path: string): WritableStream<Uint8Array> {
      * either through the `error` event above or through the error a Node
      * callback is handed as its first argument.
      */
-    function until(step: (done: (err?: Error | null) => void) => void): Promise<void> {
+    async function until(step: (done: (err?: Error | null) => void) => void): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             if (failure) {
                 reject(failure);
@@ -59,7 +59,7 @@ export function createFileWritable(path: string): WritableStream<Uint8Array> {
     }
 
     return new WritableStream<Uint8Array>({
-        write(chunk) {
+        async write(chunk) {
             // `write` returns false once the file's own buffer is full, and
             // only then is there anything to wait for. Not resolving until
             // `drain` is what carries the backpressure back up the chain.
@@ -68,7 +68,7 @@ export function createFileWritable(path: string): WritableStream<Uint8Array> {
                 else file.once('drain', done);
             });
         },
-        close() {
+        async close() {
             return until((done) => file.end(done));
         },
         abort(reason: unknown) {
@@ -146,7 +146,7 @@ export async function openXlsxFile<const M extends ReadMode = 'values'>(
     try {
         const { size } = await file.stat();
         const reader = await openXlsx(fileAccess(file, size), options);
-        return { sheets: reader.sheets, date1904: reader.date1904, close: () => file.close() };
+        return { sheets: reader.sheets, date1904: reader.date1904, close: async () => file.close() };
     } catch (err) {
         // The handle is this function's until it is handed over, and a
         // package that fails to open would leave it behind.

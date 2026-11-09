@@ -77,7 +77,8 @@
     "temporal-polyfill": "^1.0.8",
     "typescript": "^5.9.3",
     "yauzl": "^3.4.0",
-    "typescript-eslint": "^8.72.1"
+    "typescript-eslint": "^8.72.1",
+    "eslint-plugin-sonarjs": "^4.2.2"
   },
   "qa-control": {
     "run-in": "both",
@@ -88,8 +89,7 @@
     "fileNameMainDoc": "README.md",
     "silenced": [
       "packagejson_main_file_1_does_not_exists",
-      "invalid_files_section_in_package_json",
-      "eslint_errors_in_file_1"
+      "invalid_files_section_in_package_json"
     ]
   }
 }

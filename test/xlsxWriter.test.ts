@@ -77,7 +77,7 @@ describe('XlsxWriter: the package it writes', () => {
 describe('XlsxWriter: the rows mode', () => {
     it('writes one row per array, numbered from 1 - utc', async () => {
         const rows: CellRow[] = [['a', 1], [true, new Date(0)]];
-        const { sheet } = await readXlsx(write({dates:'utc'}, rows));
+        const { sheet } = await readXlsx(write({zone:'utc'}, rows));
         assert.deepEqual(sheetRows(sheet), [
             '<row r="1"><c r="A1" t="inlineStr"><is><t>a</t></is></c>' +
                 '<c r="B1"><v>1</v></c></row>',
@@ -511,7 +511,7 @@ describe('XlsxWriter: the styles the workbook carries', () => {
 
     it('reads its Dates by the clock the workbook asked for', async () => {
         const noon = new Date(Date.UTC(2024, 0, 15, 12, 0));
-        const { sheet } = await readXlsx(write({ dates: 'utc' }, [[noon]]));
+        const { sheet } = await readXlsx(write({ zone: 'utc' }, [[noon]]));
         // 45306.5 is 15/01/2024 at midday, which is what that instant reads as
         // in UTC — where the local clock would have written the reader's own.
         assert.ok(sheet.includes('<v>45306.5</v>'), sheet);
@@ -532,11 +532,11 @@ describe('XlsxWriter: the styles the workbook carries', () => {
         assert.ok(sheet.includes('<v>0.4375</v>'), sheet);
     });
 
-    it('says what the two clocks are when it is handed something else', () => {
+    it('says what the two zones are when it is handed something else', () => {
         const { sink, bytes } = recordingSink();
         assert.throws(
-            () => new XlsxWriter(sink, { dates: 'gmt' as 'utc' }),
-            /"gmt" is not a clock a Date can be read by/,
+            () => new XlsxWriter(sink, { zone: 'gmt' as 'utc' }),
+            /"gmt" is not a zone a Date can be read in/,
         );
         assert.equal(bytes().length, 0);
     });

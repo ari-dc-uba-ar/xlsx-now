@@ -37,8 +37,8 @@ export function stubDom(options: { showSaveFilePicker: boolean }): DomStub {
         restore,
     };
 
-    const picker = async (pickerOptions?: { suggestedName?: string }) => ({
-        createWritable: async () => {
+    const picker = async (pickerOptions?: { suggestedName?: string }) => ({ // eslint-disable-line @typescript-eslint/require-await -- it stands in for an async API of the browser
+        createWritable: async () => { // eslint-disable-line @typescript-eslint/require-await -- it stands in for an async API of the browser
             const chunks: Buffer[] = [];
             return new WritableStream<Uint8Array>({
                 write(chunk) {

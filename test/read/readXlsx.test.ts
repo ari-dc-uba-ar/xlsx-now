@@ -8,7 +8,7 @@ import ExcelJS from 'exceljs';
 import { createXlsxStream, type CreateXlsxStreamOptions } from '../../src/core/createXlsxStream.js';
 import { openXlsx, readXlsx } from '../../src/core/read/readXlsx.js';
 import { READ_CELLS, READ_RAW, READ_VALUES } from '../../src/core/read/types.js';
-import type { ReadDates } from '../../src/core/read/dates.js';
+import type { ReadDatesAs } from '../../src/core/read/dates.js';
 import type { ReadValue } from '../../src/core/read/types.js';
 import type { StyledCell } from '../../src/core/types.js';
 import { stylesOf, xlsxPackage, zipOf } from '../helpers/package.js';
@@ -42,7 +42,7 @@ describe('readXlsx: what this package wrote', () => {
         const bytes = await written({ rows: [dates] });
         // The writer reads a `Date` by the local clock and `localDate` is the
         // same clock the other way round, so this is the round trip.
-        const [sheet] = await readXlsx(bytes, { dates: 'localDate' });
+        const [sheet] = await readXlsx(bytes, { datesAs: 'localDate' });
         assert.deepEqual(
             sheet?.cells[0]?.map((value) => (value as Date).getTime()),
             dates.map((date) => date.getTime()),
@@ -72,8 +72,8 @@ describe('readXlsx: what this package wrote', () => {
 
     it('reads the same date four ways, and they all say the same thing', async () => {
         const bytes = await written({ rows: [[Temporal.PlainDateTime.from('2024-01-15T12:00')]] });
-        const cellOf = async (dates: ReadDates): Promise<ReadValue | undefined> =>
-            (await readXlsx(bytes, { dates }))[0]?.cells[0]?.[0];
+        const cellOf = async (datesAs: ReadDatesAs): Promise<ReadValue | undefined> =>
+            (await readXlsx(bytes, { datesAs }))[0]?.cells[0]?.[0];
 
         assert.equal(String(await cellOf('temporal')), '2024-01-15T12:00:00');
         assert.equal(await cellOf('isoString'), '2024-01-15T12:00:00');
@@ -147,7 +147,7 @@ describe('readXlsx: what this package wrote', () => {
         const bytes = await written({
             rows: [[{ v: 1234.5, s: { numFmt: '#,##0.00' } }, new Date(2024, 0, 15), 'texto']],
         });
-        const [sheet] = await readXlsx(bytes, { mode: 'cells', dates: 'localDate' });
+        const [sheet] = await readXlsx(bytes, { mode: 'cells', datesAs: 'localDate' });
         const row = (sheet?.cells[0] ?? []) as StyledCell[];
         assert.deepEqual(row[0], { v: 1234.5, s: { numFmt: '#,##0.00' } });
         assert.deepEqual(row[1]?.s, { numFmt: 14 });
@@ -157,7 +157,7 @@ describe('readXlsx: what this package wrote', () => {
         // makes the two modes one round trip rather than two shapes.
         const again = await readXlsx(await written({ rows: [row] }), {
             mode: 'cells',
-            dates: 'localDate',
+            datesAs: 'localDate',
         });
         assert.deepEqual(again[0]?.cells[0], sheet?.cells[0]);
     });
@@ -205,7 +205,7 @@ describe('readXlsx: files built by hand', () => {
             styles: stylesOf([14]),
             workbookPr: 'date1904="1"',
         });
-        const [sheet] = await readXlsx(bytes, { dates: 'localDate' });
+        const [sheet] = await readXlsx(bytes, { datesAs: 'localDate' });
         const date = sheet?.cells[0]?.[0] as Date;
         assert.equal(date.getFullYear(), 2024);
         assert.equal(date.getMonth(), 0);
@@ -279,7 +279,7 @@ describe('readXlsx: what exceljs wrote', () => {
         const bytes = await byExcelJs((sheet) => {
             sheet.addRow([when]);
         });
-        const [sheet] = await readXlsx(bytes, { dates: 'utcDate' });
+        const [sheet] = await readXlsx(bytes, { datesAs: 'utcDate' });
         const read = sheet?.cells[0]?.[0] as Date;
         assert.ok(read instanceof Date, 'a date came back as something else');
         // `exceljs` writes the serial of the UTC clock, so reading it back by
@@ -401,13 +401,13 @@ describe('readXlsx: the fields of a cell', () => {
         assert.deepEqual(sheet?.cells[0], [{ _t: 's', _v: '0' }, { _s: 0, _v: '45306' }]);
     });
 
-    it('reads the dates as their serials with dates: serial', async () => {
+    it('reads the dates as their serials with datesAs: serial', async () => {
         const bytes = xlsxPackage({
             sheets: { H: '<row r="1"><c r="A1" s="0"><v>43844</v></c></row>' },
             styles: stylesOf([14]),
             workbookPr: 'date1904="1"',
         });
-        const [sheet] = await readXlsx(bytes, { dates: 'serial', mode: { _v: true } });
+        const [sheet] = await readXlsx(bytes, { datesAs: 'serial', mode: { _v: true } });
         // The value is counted from 1900 already; `_v` is what the file says.
         assert.deepEqual(sheet?.cells[0]?.[0], { v: 45306, _v: '43844' });
         assert.equal(sheet?.date1904, true);
@@ -461,7 +461,7 @@ describe('readXlsx: a length of time', () => {
 
     it('reads it as the text the sheet shows', async () => {
         const bytes = await written({ rows: [[Temporal.Duration.from('PT30H')]] });
-        const [sheet] = await readXlsx(bytes, { mode: { w: true }, dates: 'isoString', lang: 'es' });
+        const [sheet] = await readXlsx(bytes, { mode: { w: true }, datesAs: 'isoString', lang: 'es' });
         assert.deepEqual(sheet?.cells[0]?.[0], { v: 'PT30H', w: '30:00:00' });
     });
 });

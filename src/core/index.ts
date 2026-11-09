@@ -22,7 +22,7 @@ export {
     fromExcelSerialUtc,
     serialKind,
     type DateKind,
-    type WriteDates,
+    type Zone,
 } from './cell.js';
 export {
     temporalApi,
@@ -62,6 +62,7 @@ export {
     urlValue,
     withType,
     type ConvertContext,
+    type ConvertContextOptions,
     type ConvertedValue,
     type NativeValue,
     type TypeHandler,
@@ -87,7 +88,7 @@ export {
     type XlsxSource,
 } from './read/readXlsx.js';
 export { bytesAccess, type RandomAccess } from './read/randomAccess.js';
-export { isoDuration, readDate, readDuration, type ReadDates } from './read/dates.js';
+export { isoDuration, readDate, readDuration, type ReadDatesAs } from './read/dates.js';
 export { READ_CELLS, READ_RAW, READ_VALUES } from './read/types.js';
 export type { FormatKind } from './read/numberFormats.js';
 export type {
